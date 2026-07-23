@@ -1,5 +1,5 @@
 {
-  "name": "rangeelaa-thursday-emails",
+  "name": "permanent-access-token",
   "private": true,
   "scripts": {
     "build": "prisma generate && react-router build",

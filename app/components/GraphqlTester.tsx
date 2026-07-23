@@ -108,7 +108,7 @@ export function GraphqlTester({
         fetcher={fetcher}
         defaultQuery={defaultQuery}
         isHeadersEditorEnabled={false}
-        defaultEditorToolsVisibility="variables"
+        defaultEditorToolsVisibility={false}
       >
         <GraphiQL.Logo>GraphiQL</GraphiQL.Logo>
       </GraphiQL>

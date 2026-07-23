@@ -1,22 +1,71 @@
 .graphql-tester {
-  height: min(65vh, 640px);
-  min-height: 420px;
+  height: 560px;
+  min-height: 560px;
+  display: flex;
+  flex-direction: column;
   border: 1px solid #d0d5dd;
   border-radius: 12px;
   overflow: hidden;
   background: #fff;
+  position: relative;
 }
 
 .graphql-tester .graphiql-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100% !important;
+  width: 100%;
+  overflow: hidden;
+}
+
+.graphql-tester .graphiql-main,
+.graphql-tester .graphiql-sessions,
+.graphql-tester .graphiql-session,
+.graphql-tester .graphiql-editors,
+.graphql-tester .graphiql-query-editor,
+.graphql-tester .graphiql-response,
+.graphql-tester .graphiql-editor {
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+.graphql-tester .graphiql-session {
+  display: flex;
+  flex-direction: column;
   height: 100%;
+}
+
+.graphql-tester .graphiql-editors {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.graphql-tester .graphiql-toolbar,
+.graphql-tester .graphiql-editor-tools,
+.graphql-tester .graphiql-editor-tool {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.graphql-tester .graphiql-editor-tools {
+  max-height: 40%;
+  overflow: auto;
+}
+
+.graphql-tester .monaco-editor,
+.graphql-tester .overflow-guard {
+  position: absolute !important;
 }
 
 .graphql-tester-loading {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: min(65vh, 640px);
-  min-height: 420px;
+  height: 560px;
+  min-height: 560px;
   border: 1px solid #d0d5dd;
   border-radius: 12px;
   color: #4a5565;
