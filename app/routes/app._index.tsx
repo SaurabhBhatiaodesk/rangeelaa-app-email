@@ -217,7 +217,7 @@ export default function Index() {
 
   return (
     <s-page
-      heading="Rangeelaa Thursday Emails"
+      heading="Shopify Permanent Access Token"
     >
       <s-button
         slot="primary-action"

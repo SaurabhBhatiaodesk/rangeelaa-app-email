@@ -1,7 +1,7 @@
 # Shopify app configuration
 
 client_id = "fa5cc1b31996ccdc2926392697eff4cb"
-name = "rangeelaa-thursday-emails"
+name = "Shopify Permanent Access Token"
 application_url = "https://rangeelaa-thursday-emails-18ca86a014f2.herokuapp.com"
 embedded = true
 
