@@ -9,6 +9,7 @@ import {
 } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { GraphqlTesterLazy } from "../components/GraphqlTesterLazy";
 import { authenticate } from "../shopify.server";
 
 type ShopQueryResponse = {
@@ -22,6 +23,15 @@ type ShopQueryResponse = {
     message?: string;
   }>;
 };
+
+const DEFAULT_GRAPHQL_QUERY = `query GetShop {
+  shop {
+    name
+    myshopifyDomain
+  }
+}`;
+
+const GRAPHQL_MODAL_ID = "graphql-tester-modal";
 
 export async function loader({
   request,
@@ -226,6 +236,146 @@ export default function Index() {
         Verified
       </s-badge>
 
+      <s-section heading="Admin API access token">
+        {data.canRevealToken &&
+        data.accessToken ? (
+          <s-stack
+            direction="block"
+            gap="base"
+          >
+            <s-banner
+              heading="Sensitive credential"
+              tone="warning"
+            >
+              <s-paragraph>
+                Reveal or copy this token only when
+                necessary. Do not include it in
+                screenshots, logs or frontend code.
+              </s-paragraph>
+            </s-banner>
+
+            <s-text-field
+              label="Access token"
+              value={
+                showToken
+                  ? data.accessToken
+                  : data.tokenPreview
+              }
+              readOnly
+            />
+
+            <s-stack
+              direction="inline"
+              gap="small"
+              alignItems="start"
+            >
+              <s-button
+                onClick={() =>
+                  setShowToken(
+                    (currentValue) =>
+                      !currentValue,
+                  )
+                }
+              >
+                {showToken
+                  ? "Hide token"
+                  : "Show token"}
+              </s-button>
+
+              <s-button
+                variant="primary"
+                onClick={handleCopyToken}
+                disabled={isCopying}
+                {...(isCopying
+                  ? { loading: true }
+                  : {})}
+              >
+                Copy token
+              </s-button>
+
+              <s-button
+                commandFor={GRAPHQL_MODAL_ID}
+                command="--show"
+              >
+                Open GraphiQL
+              </s-button>
+            </s-stack>
+          </s-stack>
+        ) : (
+          <s-stack
+            direction="block"
+            gap="base"
+          >
+            <s-banner
+              heading="Access token protected"
+              tone="info"
+            >
+              <s-paragraph>
+                The token is stored in server-side
+                Prisma session storage and is not
+                being sent to the browser.
+              </s-paragraph>
+
+              <s-paragraph>
+                Temporarily set
+                ALLOW_TOKEN_DISPLAY=true on the
+                server only when an authorized person
+                needs to copy it.
+              </s-paragraph>
+            </s-banner>
+
+            <s-stack
+              direction="inline"
+              gap="small"
+              alignItems="start"
+            >
+              <s-button
+                commandFor={GRAPHQL_MODAL_ID}
+                command="--show"
+              >
+                Open GraphiQL
+              </s-button>
+            </s-stack>
+          </s-stack>
+        )}
+
+        <s-modal
+          id={GRAPHQL_MODAL_ID}
+          heading="GraphQL API tester"
+          size="large-100"
+          accessibilityLabel="Run Admin GraphQL query"
+        >
+          <s-stack
+            direction="block"
+            gap="base"
+          >
+            <s-banner
+              heading="Your API access token is working"
+              tone="success"
+            >
+              <s-paragraph>
+                This GraphQL tester is connected with
+                your store using the saved offline
+                Admin API access token.
+              </s-paragraph>
+            </s-banner>
+
+            <GraphqlTesterLazy
+              defaultQuery={DEFAULT_GRAPHQL_QUERY}
+            />
+          </s-stack>
+
+          <s-button
+            slot="secondary-actions"
+            variant="secondary"
+            commandFor={GRAPHQL_MODAL_ID}
+            command="--hide"
+          >
+            Close
+          </s-button>
+        </s-modal>
+      </s-section>
+
       <s-section>
         <s-banner
           heading="Connection verified by Shopify"
@@ -331,85 +481,6 @@ export default function Index() {
             }
           />
         </s-grid>
-      </s-section>
-
-      <s-section heading="Admin API access token">
-        {data.canRevealToken &&
-        data.accessToken ? (
-          <s-stack
-            direction="block"
-            gap="base"
-          >
-            <s-banner
-              heading="Sensitive credential"
-              tone="warning"
-            >
-              <s-paragraph>
-                Reveal or copy this token only when
-                necessary. Do not include it in
-                screenshots, logs or frontend code.
-              </s-paragraph>
-            </s-banner>
-
-            <s-text-field
-              label="Access token"
-              value={
-                showToken
-                  ? data.accessToken
-                  : data.tokenPreview
-              }
-              readOnly
-            />
-
-            <s-stack
-              direction="inline"
-              gap="small"
-              alignItems="start"
-            >
-              <s-button
-                onClick={() =>
-                  setShowToken(
-                    (currentValue) =>
-                      !currentValue,
-                  )
-                }
-              >
-                {showToken
-                  ? "Hide token"
-                  : "Show token"}
-              </s-button>
-
-              <s-button
-                variant="primary"
-                onClick={handleCopyToken}
-                disabled={isCopying}
-                {...(isCopying
-                  ? { loading: true }
-                  : {})}
-              >
-                Copy token
-              </s-button>
-            </s-stack>
-          </s-stack>
-        ) : (
-          <s-banner
-            heading="Access token protected"
-            tone="info"
-          >
-            <s-paragraph>
-              The token is stored in server-side
-              Prisma session storage and is not
-              being sent to the browser.
-            </s-paragraph>
-
-            <s-paragraph>
-              Temporarily set
-              ALLOW_TOKEN_DISPLAY=true on the
-              server only when an authorized person
-              needs to copy it.
-            </s-paragraph>
-          </s-banner>
-        )}
       </s-section>
 
       <s-section heading="Granted API permissions">

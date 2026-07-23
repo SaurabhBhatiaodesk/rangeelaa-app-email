@@ -56,6 +56,20 @@ export default defineConfig({
     assetsInlineLimit: 0,
   },
   optimizeDeps: {
-    include: ["@shopify/app-bridge-react"],
+    include: [
+      "@shopify/app-bridge-react",
+      "graphiql",
+      "@graphiql/toolkit",
+      "graphql",
+    ],
+  },
+  ssr: {
+    noExternal: [
+      "graphiql",
+      "@graphiql/react",
+      "@graphiql/toolkit",
+      "@graphiql/plugin-doc-explorer",
+      "@graphiql/plugin-history",
+    ],
   },
 }) satisfies UserConfig;

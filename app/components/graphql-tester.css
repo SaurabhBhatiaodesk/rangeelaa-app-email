@@ -1,0 +1,24 @@
+.graphql-tester {
+  height: min(65vh, 640px);
+  min-height: 420px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.graphql-tester .graphiql-container {
+  height: 100%;
+}
+
+.graphql-tester-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: min(65vh, 640px);
+  min-height: 420px;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  color: #4a5565;
+  background: #f8fafc;
+}
