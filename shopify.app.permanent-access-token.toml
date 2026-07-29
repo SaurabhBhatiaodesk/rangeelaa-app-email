@@ -1,6 +1,6 @@
 client_id = "2051a327000a096d9e4fbeebd27308d9"
 name = "Rangeela Shipping Manager"
-handle = "rangeelaa-shipping-manager"
+handle = "rangeelaa-shipping-manager-app"
 application_url = "https://rangeelaa-thursday-emails-18ca86a014f2.herokuapp.com"
 embedded = true
 
