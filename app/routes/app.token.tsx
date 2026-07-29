@@ -218,6 +218,7 @@ export default function Index() {
   return (
     <s-page
       heading="Permanent Access Token"
+      inlineSize="large"
     >
       <s-button
         slot="primary-action"
