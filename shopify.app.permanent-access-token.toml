@@ -1,11 +1,11 @@
 client_id = "2051a327000a096d9e4fbeebd27308d9"
-name = "Permanent Access Token"
+name = "Rangeela Shipping Manager"
 handle = "rangeelaa-permanent-access-token"
 application_url = "https://rangeelaa-thursday-emails-18ca86a014f2.herokuapp.com"
 embedded = true
 
 [access_scopes]
-scopes = "write_metaobject_definitions,write_metaobjects,write_products"
+scopes = "read_orders,write_orders,write_draft_orders,read_draft_orders,read_customers,read_products,write_products,write_metaobjects,write_metaobject_definitions"
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
@@ -37,6 +37,10 @@ topics = ["app/uninstalled"]
 [[webhooks.subscriptions]]
 uri = "/webhooks/app/scopes_update"
 topics = ["app/scopes_update"]
+
+[[webhooks.subscriptions]]
+uri = "/webhooks/orders/updated"
+topics = ["orders/updated"]
 
 [auth]
 redirect_urls = [

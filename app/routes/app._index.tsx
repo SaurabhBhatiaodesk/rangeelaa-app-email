@@ -1,686 +1,1318 @@
-import { useState } from "react";
-import type {
-  HeadersFunction,
-  LoaderFunctionArgs,
-} from "react-router";
-import {
-  useLoaderData,
-  useRevalidator,
-} from "react-router";
-import { useAppBridge } from "@shopify/app-bridge-react";
-import { boundary } from "@shopify/shopify-app-react-router/server";
-import { GraphqlTesterLazy } from "../components/GraphqlTesterLazy";
-import { authenticate } from "../shopify.server";
+import { useEffect, useRef, useState, startTransition } from "react";
+  import type {
+    ActionFunctionArgs,
+    HeadersFunction,
+    LoaderFunctionArgs,
+  } from "react-router";
+  import {
+    useFetcher,
+    useLoaderData,
+    useNavigate,
+    useSearchParams,
+  } from "react-router";
+  import { useAppBridge } from "@shopify/app-bridge-react";
+  import { boundary } from "@shopify/shopify-app-react-router/server";
 
-type ShopQueryResponse = {
-  data?: {
-    shop?: {
-      name?: string;
-      myshopifyDomain?: string;
-    };
-  };
-  errors?: Array<{
-    message?: string;
-  }>;
-};
+  import { PreorderStatusButtons } from "../components/PreorderStatusButtons";
+  import { ShippingPaidAlert } from "../components/ShippingPaidAlert";
+  import {
+    applyStatusAction,
+    fetchAwaitingReadinessOrders,
+    fetchShippingPaidAlerts,
+  } from "../lib/orders.server";
+  import {
+    previewThursdayPools,
+    runThursdayCycle,
+  } from "../lib/thursday-cycle.server";
+  import { runFridayReset } from "../lib/friday-reset.server";
+  import { runStatusEmailPoller } from "../lib/status-emails.server";
+  import type { StatusAction } from "../lib/tags";
+  import { hasTag } from "../lib/tags";
+  import { authenticate } from "../shopify.server";
+  import {
+    getShopSettings,
+  } from "../lib/klaviyo-settings.server";
+  import { KLAVIYO_STATUS_EMAIL_META } from "../lib/tags";
 
-const DEFAULT_GRAPHQL_QUERY = `query GetShop {
-  shop {
-    name
-    myshopifyDomain
-  }
-}`;
+  type TabId = "preorders" | "emails" | "thursday" | "alerts" | "friday";
 
-const GRAPHQL_MODAL_ID = "graphql-tester-modal";
+  const ALERT_HIDE_ACTIONS = ["hold_for_next_cycle"] as const;
 
-export async function loader({
-  request,
-}: LoaderFunctionArgs) {
-  const { admin, session } =
-    await authenticate.admin(request);
+  export const loader = async ({ request }: LoaderFunctionArgs) => {
+    const { admin, session } = await authenticate.admin(request);
+    const url = new URL(request.url);
+    const tab = (url.searchParams.get("tab") || "preorders") as TabId;
 
-  if (!session.accessToken) {
-    throw new Response(
-      "Shopify access token not found.",
-      {
-        status: 401,
-      },
-    );
-  }
+    const shopSettings = await getShopSettings(session.shop);
 
-  if (session.isOnline) {
-    throw Response.json(
-      {
-        success: false,
-        message:
-          "Online token received. Set useOnlineTokens to false and reinstall the app.",
-        tokenType: "online",
-        isOnline: true,
-        expires:
-          session.expires?.toISOString() ?? null,
-      },
-      {
-        status: 400,
-      },
-    );
-  }
-
-  /*
-   * This query verifies that Shopify accepts
-   * the saved token for the connected store.
-   */
-  const response = await admin.graphql(
-    `#graphql
-      query GetShop {
-        shop {
-          name
-          myshopifyDomain
-        }
-      }
-    `,
-  );
-
-  const responseJson =
-    (await response.json()) as ShopQueryResponse;
-
-  const shop = responseJson.data?.shop;
-
-  if (responseJson.errors?.length || !shop) {
-    throw Response.json(
-      {
-        success: false,
-        message:
-          "Shopify rejected the token or the store could not be verified.",
-        errors: responseJson.errors ?? [],
-      },
-      {
-        status: 401,
-      },
-    );
-  }
-
-  const isPermanent =
-    session.isOnline === false &&
-    !session.expires;
-
-  /*
-   * Development: token visible by default.
-   * Production: set ALLOW_TOKEN_DISPLAY=true
-   * only when the token genuinely needs to be copied.
-   */
-  const canRevealToken =
-    process.env.NODE_ENV !== "production" ||
-    process.env.ALLOW_TOKEN_DISPLAY === "true";
-
-  const tokenPreview =
-    session.accessToken.length > 12
-      ? `${session.accessToken.slice(0, 8)}${"•".repeat(
-          20,
-        )}${session.accessToken.slice(-4)}`
-      : "••••••••••••";
-
-  return {
-    success: true,
-    verifiedByShopify: true,
-    verifiedAt: new Date().toISOString(),
-
-    shopName:
-      shop.name ?? "Unknown store",
-
-    shopDomain:
-      shop.myshopifyDomain ?? session.shop,
-
-    accessToken: canRevealToken
-      ? session.accessToken
-      : null,
-
-    tokenPreview,
-    canRevealToken,
-
-    scopes: session.scope
-      ? session.scope
-          .split(",")
-          .map((scope) => scope.trim())
-          .filter(Boolean)
-      : [],
-
-    tokenType: "offline",
-    isOnline: session.isOnline,
-
-    expires:
-      session.expires?.toISOString() ?? null,
-
-    isPermanent,
-
-    message: isPermanent
-      ? "A real non-expiring offline Shopify access token is active."
-      : "The offline access token has an expiration time.",
-  };
-}
-
-export default function Index() {
-  const data = useLoaderData<typeof loader>();
-  const shopify = useAppBridge();
-  const revalidator = useRevalidator();
-
-  const [showToken, setShowToken] =
-    useState(false);
-
-  const [isCopying, setIsCopying] =
-    useState(false);
-
-  const isVerifying =
-    revalidator.state === "loading";
-
-  const handleCopyToken = async () => {
-    if (!data.accessToken) {
-      shopify.toast.show(
-        "Token display is disabled",
-        {
-          isError: true,
-        },
+    let shopName = session.shop;
+    try {
+      const shopResponse = await admin.graphql(
+        `#graphql
+          query ShippingManagerShopName {
+            shop {
+              name
+            }
+          }`,
       );
-
-      return;
+      const shopJson = await shopResponse.json();
+      shopName = shopJson.data?.shop?.name || session.shop;
+    } catch {
+      shopName = session.shop;
     }
+
+    const base = {
+      shop: session.shop,
+      shopName,
+      klaviyoConfigured: shopSettings.klaviyoApiKeySource !== "none",
+      thursdayTemplateConfigured: Boolean(
+        shopSettings.klaviyoTemplates.thursdayTemplateId,
+      ),
+      klaviyoTemplates: shopSettings.klaviyoTemplates,
+      preorderLabels: shopSettings.preorderLabels,
+      preorderTags: shopSettings.preorderTags,
+      cronConfigured: Boolean(process.env.CRON_SECRET && process.env.CRON_SHOP),
+      loadError: null as string | null,
+    };
 
     try {
-      setIsCopying(true);
+      if (tab === "alerts") {
+        const alerts = await fetchShippingPaidAlerts(
+          admin,
+          shopSettings.preorderTags,
+        );
+        return { ...base, tab, preorders: [], alerts, thursdayPreview: null };
+      }
 
-      await copyToClipboard(
-        data.accessToken,
-      );
+      if (tab === "thursday") {
+        const thursdayPreview = await previewThursdayPools(
+          admin,
+          session.shop,
+        );
+        return {
+          ...base,
+          tab,
+          preorders: [],
+          alerts: [],
+          thursdayPreview,
+        };
+      }
 
-      shopify.toast.show(
-        "Access token copied successfully",
+      if (tab === "friday" || tab === "emails") {
+        return {
+          ...base,
+          tab,
+          preorders: [],
+          alerts: [],
+          thursdayPreview: null,
+        };
+      }
+
+      const preorders = await fetchAwaitingReadinessOrders(
+        admin,
+        shopSettings.preorderTags,
       );
+      return {
+        ...base,
+        tab,
+        preorders,
+        alerts: [],
+        thursdayPreview: null,
+      };
     } catch (error) {
-      console.error(
-        "Unable to copy token:",
-        error,
-      );
-
-      shopify.toast.show(
-        "Unable to copy access token",
-        {
-          isError: true,
-        },
-      );
-    } finally {
-      setIsCopying(false);
+      const message =
+        error instanceof Error ? error.message : "Failed to load data";
+      return {
+        ...base,
+        tab,
+        preorders: [],
+        alerts: [],
+        thursdayPreview: null,
+        loadError: message,
+      };
     }
   };
 
-  const handleVerifyAgain = () => {
-    revalidator.revalidate();
+  export const action = async ({ request }: ActionFunctionArgs) => {
+    const { admin, session } = await authenticate.admin(request);
+    const formData = await request.formData();
+    const intent = String(formData.get("intent") || "status");
+    const actionLog: Record<string, unknown> = {
+      intent,
+      shop: session.shop,
+      formKeys: Array.from(formData.keys()),
+    };
+    if (typeof session === "object" && session !== null && "user" in session) {
+      actionLog.userId = (session as any).user?.id;
+    }
+    console.log("App action received", actionLog);
+
+    if (intent === "thursday_run") {
+      const dryRun = formData.get("dryRun") === "1";
+      console.log("Thursday cycle action start", { dryRun, shop: session.shop });
+      return runThursdayCycle(admin, { dryRun, shop: session.shop });
+    }
+
+    if (intent === "friday_run") {
+      const dryRun = formData.get("dryRun") === "1";
+      return runFridayReset(admin, { dryRun, shop: session.shop });
+    }
+
+    if (intent === "status_emails_run") {
+      const dryRun = formData.get("dryRun") === "1";
+      return runStatusEmailPoller(admin, { dryRun, shop: session.shop });
+    }
+
+    const orderId = String(formData.get("orderId") || "");
+    const actionName = String(formData.get("actionName") || "") as StatusAction;
+
+    if (!orderId || !actionName) {
+      return { ok: false as const, error: "Missing orderId or action" };
+    }
+
+    const shopSettings = await getShopSettings(session.shop);
+    return applyStatusAction(admin, orderId, actionName, {
+      workflowTags: shopSettings.preorderTags,
+      labels: shopSettings.preorderLabels,
+      shop: session.shop,
+    });
   };
 
-  return (
-    <s-page
-      heading="Permanent Access Token"
-    >
+  const AVATAR_PALETTE = [
+    { bg: "#E3F5EA", fg: "#2E8F4C" },
+    { bg: "#EAF1FE", fg: "#4A6FE0" },
+    { bg: "#FDF1E3", fg: "#B9740B" },
+    { bg: "#FBE9EE", fg: "#C43D6B" },
+    { bg: "#F0E9FE", fg: "#7C4FD6" },
+    { bg: "#E3F6F5", fg: "#2A9D96" },
+  ];
+
+  function CustomerAvatar({ name }: { name: string }) {
+    const initials = name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?";
+    const paletteIndex =
+      name.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0) %
+      AVATAR_PALETTE.length;
+    const { bg, fg } = AVATAR_PALETTE[paletteIndex];
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 28,
+          height: 28,
+          borderRadius: "50%",
+          background: bg,
+          color: fg,
+          fontSize: 12,
+          fontWeight: 700,
+          flexShrink: 0,
+        }}
+      >
+        {initials}
+      </span>
+    );
+  }
+
+  function TabButton({
+    active,
+    number,
+    label,
+    onClick,
+  }: {
+    active: boolean;
+    number: string;
+    label: string;
+    onClick: () => void;
+  }) {
+    return (
       <s-button
-        slot="primary-action"
-        onClick={handleVerifyAgain}
-        {...(isVerifying
-          ? { loading: true }
-          : {})}
+        variant={active ? "primary" : "secondary"}
+        onClick={onClick}
+        accessibilityLabel={`${number}. ${label}${active ? " (selected)" : ""}`}
       >
-        Verify again
+        {number}. {label}
       </s-button>
+    );
+  }
 
-      <s-badge
-        slot="accessory"
-        tone="success"
-      >
-        Verified
-      </s-badge>
+  export default function ShippingManagerIndex() {
+    const data = useLoaderData<typeof loader>();
+    const fetcher = useFetcher<typeof action>();
+    const shopify = useAppBridge();
+    const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [busyAction, setBusyAction] = useState<string | null>(null);
+    const [heldOrderIds, setHeldOrderIds] = useState<Set<string>>(new Set());
+    const processedFetcherDataRef = useRef<unknown>(null);
+    const [lastEmailRun, setLastEmailRun] = useState<{
+      rows?: Array<{
+        orderName: string;
+        job: string;
+        result: string;
+        detail?: string;
+      }>;
+    } | null>(null);
 
-      <s-section heading="Admin API access token">
-        {data.canRevealToken &&
-        data.accessToken ? (
-          <s-stack
-            direction="block"
-            gap="base"
-          >
-            <s-banner
-              heading="Sensitive credential"
-              tone="warning"
-            >
-              <s-paragraph>
-                Reveal or copy this token only when
-                necessary. Do not include it in
-                screenshots, logs or frontend code.
-              </s-paragraph>
-            </s-banner>
+    const [preorderSearch, setPreorderSearch] = useState("");
 
-            <s-text-field
-              label="Access token"
-              value={
-                showToken
-                  ? data.accessToken
-                  : data.tokenPreview
-              }
-              readOnly
-            />
+    const filteredPreorders = (() => {
+      const q = preorderSearch.trim().toLowerCase();
+      if (!q) return data.preorders;
+      return data.preorders.filter((order) => {
+        return (
+          order.name.toLowerCase().includes(q) ||
+          (order.customerName ?? "").toLowerCase().includes(q) ||
+          (order.email ?? "").toLowerCase().includes(q)
+        );
+      });
+    })();
 
-            <s-stack
-              direction="inline"
-              gap="small"
-              alignItems="start"
-            >
-              <s-button
-                onClick={() =>
-                  setShowToken(
-                    (currentValue) =>
-                      !currentValue,
-                  )
-                }
-              >
-                {showToken
-                  ? "Hide token"
-                  : "Show token"}
-              </s-button>
+    const pageSize = 10;
+    const currentPage = Math.max(
+      1,
+      Number(searchParams.get("page") || "1"),
+    );
+    const totalPages = Math.max(
+      1,
+      Math.ceil(filteredPreorders.length / pageSize),
+    );
+    const page = Math.min(currentPage, totalPages);
 
-              <s-button
-                variant="primary"
-                onClick={handleCopyToken}
-                disabled={isCopying}
-                {...(isCopying
-                  ? { loading: true }
-                  : {})}
-              >
-                Copy token
-              </s-button>
+    const pagedPreorders = filteredPreorders.slice(
+      (page - 1) * pageSize,
+      page * pageSize,
+    );
 
-              <s-button
-                commandFor={GRAPHQL_MODAL_ID}
-                command="--show"
-              >
-                Open GraphiQL
-              </s-button>
-            </s-stack>
+    const setPage = (nextPage: number) => {
+      startTransition(() => {
+        const params = new URLSearchParams(searchParams);
+        if (nextPage <= 1) {
+          params.delete("page");
+        } else {
+          params.set("page", String(nextPage));
+        }
+        setSearchParams(params);
+      });
+    };
+
+    const handlePreorderSearch = (
+      e: Event & { currentTarget: { value: string } },
+    ) => {
+      setPreorderSearch(e.currentTarget.value);
+      setPage(1);
+    };
+
+    const tab = (searchParams.get("tab") || data.tab || "preorders") as TabId;
+    const cycleBusy = fetcher.state !== "idle";
+    const [manualTestOpen, setManualTestOpen] = useState(false);
+
+    useEffect(() => {
+      const freshAlertIds = new Set(data.alerts.map((order) => order.id));
+      setHeldOrderIds((prev) => {
+        let changed = false;
+        const next = new Set<string>();
+        prev.forEach((id) => {
+          if (freshAlertIds.has(id)) {
+            next.add(id);
+          } else {
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, [data.alerts]);
+
+    useEffect(() => {
+      if (fetcher.state !== "idle") return;
+      if (!fetcher.data) return;
+      if (processedFetcherDataRef.current === fetcher.data) return;
+      processedFetcherDataRef.current = fetcher.data;
+
+      const finishedAction = busyAction;
+      setBusyAction(null);
+
+      const succeeded = "ok" in fetcher.data && fetcher.data.ok;
+      const hideAction = ALERT_HIDE_ACTIONS.find((action) =>
+        finishedAction?.endsWith(`:${action}`),
+      );
+      if (hideAction && !succeeded) {
+        const orderId = finishedAction!.slice(0, -`:${hideAction}`.length);
+        setHeldOrderIds((prev) => {
+          const next = new Set(prev);
+          next.delete(orderId);
+          return next;
+        });
+      }
+
+      if (finishedAction?.endsWith(":hold_for_next_cycle") && succeeded) {
+        navigate(
+          {
+            search: `?tab=thursday`,
+          },
+          { replace: true },
+        );
+      }
+
+      if ("rows" in fetcher.data && Array.isArray(fetcher.data.rows)) {
+        setLastEmailRun({ rows: fetcher.data.rows });
+      }
+
+      if ("message" in fetcher.data && fetcher.data.message) {
+        const isError = "ok" in fetcher.data && fetcher.data.ok === false;
+        shopify.toast.show(String(fetcher.data.message).slice(0, 200), {
+          isError,
+        });
+        return;
+      }
+
+      if ("ok" in fetcher.data && fetcher.data.ok) {
+        shopify.toast.show(
+          "message" in fetcher.data && fetcher.data.message
+            ? String(fetcher.data.message)
+            : "Done",
+        );
+      } else if ("error" in fetcher.data && fetcher.data.error) {
+        shopify.toast.show(String(fetcher.data.error), { isError: true });
+      } else if ("ok" in fetcher.data && fetcher.data.ok === false) {
+        const rowError = Array.isArray((fetcher.data as any).results)
+          ? (fetcher.data as any).results.find((r: any) => r?.error)?.error
+          : undefined;
+        shopify.toast.show(
+          String(rowError ?? "Thursday cycle failed. Check details."),
+          { isError: true },
+        );
+      }
+    }, [fetcher.state, fetcher.data, shopify, busyAction]);
+
+    const setTab = (next: TabId) => {
+      startTransition(() => {
+        const params = new URLSearchParams(searchParams);
+        if (next === "preorders") params.delete("tab");
+        else params.set("tab", next);
+        setSearchParams(params);
+      });
+    };
+
+    const runAction = (orderId: string, actionName: StatusAction) => {
+      setBusyAction(`${orderId}:${actionName}`);
+      if ((ALERT_HIDE_ACTIONS as readonly string[]).includes(actionName)) {
+        setHeldOrderIds((prev) => new Set(prev).add(orderId));
+      }
+      fetcher.submit(
+        { intent: "status", orderId, actionName },
+        { method: "POST" },
+      );
+    };
+
+    const runCycle = (
+      intent: "thursday_run" | "friday_run" | "status_emails_run",
+      dryRun: boolean,
+    ) => {
+      setBusyAction(`${intent}:${dryRun ? "preview" : "run"}`);
+      fetcher.submit(
+        { intent, dryRun: dryRun ? "1" : "0" },
+        { method: "POST" },
+      );
+    };
+
+    const isBusy = (key: string) => busyAction === key && cycleBusy;
+
+    return (
+      <s-page heading="Rangeela Shipping Manager" inlineSize="large">
+        <s-box paddingBlockEnd="small-200">
+          <s-stack direction="inline" alignItems="center" gap="small-200">
+            <s-icon type="wand" tone="info" size="base" />
+            <span style={{ fontSize: 20, fontWeight: 700, color: "#1A1F36" }}>
+              Welcome back — here's your shipping overview.
+            </span>
           </s-stack>
-        ) : (
-          <s-stack
-            direction="block"
-            gap="base"
+        </s-box>
+        <s-box paddingBlockEnd="large">
+          <div
+            style={{
+              background: "#FFFFFF",
+              border: "1px solid #E3E8EF",
+              borderRadius: 16,
+              overflow: "hidden",
+            }}
           >
-            <s-banner
-              heading="Access token protected"
-              tone="info"
-            >
-              <s-paragraph>
-                The token is stored in server-side
-                Prisma session storage and is not
-                being sent to the browser.
-              </s-paragraph>
-
-              <s-paragraph>
-                Temporarily set
-                ALLOW_TOKEN_DISPLAY=true on the
-                server only when an authorized person
-                needs to copy it.
-              </s-paragraph>
-            </s-banner>
-
-            <s-stack
-              direction="inline"
-              gap="small"
-              alignItems="start"
-            >
-              <s-button
-                commandFor={GRAPHQL_MODAL_ID}
-                command="--show"
+            <s-box padding="base">
+              <s-grid
+                gridTemplateColumns="44px 1fr auto"
+                alignItems="center"
+                columnGap="base"
               >
-                Open GraphiQL
-              </s-button>
-            </s-stack>
-          </s-stack>
-        )}
-
-        <s-modal
-          id={GRAPHQL_MODAL_ID}
-          heading="GraphQL API tester"
-          size="large-100"
-          accessibilityLabel="Run Admin GraphQL query"
-        >
-          <s-stack
-            direction="block"
-            gap="base"
-          >
-            <s-banner
-              heading="Your API access token is working"
-              tone="success"
-            >
-              <s-paragraph>
-                This GraphQL tester is connected with
-                your store using the saved offline
-                Admin API access token.
-              </s-paragraph>
-            </s-banner>
-
-            <GraphqlTesterLazy
-              defaultQuery={DEFAULT_GRAPHQL_QUERY}
-            />
-          </s-stack>
-
-          <s-button
-            slot="secondary-actions"
-            variant="secondary"
-            commandFor={GRAPHQL_MODAL_ID}
-            command="--hide"
-          >
-            Close
-          </s-button>
-        </s-modal>
-      </s-section>
-
-      <s-section>
-        <s-banner
-          heading="Connection verified by Shopify"
-          tone="success"
-        >
-          <s-paragraph>
-            Shopify successfully accepted the
-            Admin API token for{" "}
-            {data.shopDomain}.
-          </s-paragraph>
-
-          <s-paragraph>
-            {data.message}
-          </s-paragraph>
-        </s-banner>
-      </s-section>
-
-      <s-section heading="Store overview">
-        <s-grid
-          gridTemplateColumns="repeat(auto-fit, minmax(210px, 1fr))"
-          gap="base"
-        >
-          <InformationCard
-            label="Store name"
-            value={data.shopName}
-          />
-
-          <InformationCard
-            label="Store domain"
-            value={data.shopDomain}
-          />
-
-          <InformationCard
-            label="Authentication"
-            value="Offline access"
-          />
-
-          <InformationCard
-            label="Expiration"
-            value={
-              data.expires
-                ? new Date(
-                    data.expires,
-                  ).toLocaleString()
-                : "No expiration"
-            }
-          />
-        </s-grid>
-      </s-section>
-
-      <s-section heading="Connection health">
-        <s-grid
-          gridTemplateColumns="repeat(auto-fit, minmax(210px, 1fr))"
-          gap="base"
-        >
-          <StatusCard
-            label="Shopify verification"
-            value="Verified"
-            tone="success"
-            description="The Admin API request completed successfully."
-          />
-
-          <StatusCard
-            label="Authentication mode"
-            value="Offline"
-            tone="info"
-            description="Suitable for background and server-side tasks."
-          />
-
-          <StatusCard
-            label="Online session"
-            value={
-              data.isOnline ? "Yes" : "No"
-            }
-            tone={
-              data.isOnline
-                ? "critical"
-                : "success"
-            }
-            description={
-              data.isOnline
-                ? "This token is tied to a user session."
-                : "This token is not tied to a staff session."
-            }
-          />
-
-          <StatusCard
-            label="Token lifetime"
-            value={
-              data.isPermanent
-                ? "Non-expiring"
-                : "Expiring"
-            }
-            tone={
-              data.isPermanent
-                ? "success"
-                : "warning"
-            }
-            description={
-              data.isPermanent
-                ? "No time-based expiration is configured."
-                : "Shopify has assigned an expiration time."
-            }
-          />
-        </s-grid>
-      </s-section>
-
-      <s-section heading="Granted API permissions">
-        {data.scopes.length > 0 ? (
-          <s-stack
-            direction="inline"
-            gap="small"
-            alignItems="start"
-          >
-            {data.scopes.map((scope) => (
-              <s-badge
-                key={scope}
-                tone="info"
+                <s-box inlineSize="44px" blockSize="44px" overflow="hidden">
+                    <svg
+                      width="44"
+                      height="44"
+                      viewBox="0 0 56 56"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <circle cx="28" cy="28" r="28" fill="#E3F5EA" />
+                      <rect
+                        x="13"
+                        y="15"
+                        width="30"
+                        height="21"
+                        rx="4"
+                        fill="#FFFFFF"
+                        stroke="#B4E0C4"
+                        strokeWidth="1.5"
+                      />
+                      <path
+                        d="M13 19a4 4 0 0 1 4-4h22a4 4 0 0 1 4 4v2H13v-2Z"
+                        fill="#34A853"
+                        opacity="0.18"
+                      />
+                      <circle cx="17.5" cy="17.5" r="1" fill="#2E8F4C" />
+                      <circle cx="20.5" cy="17.5" r="1" fill="#2E8F4C" />
+                      <rect x="18" y="25" width="17" height="2" rx="1" fill="#CFEBDA" />
+                      <rect x="18" y="29.5" width="11" height="2" rx="1" fill="#CFEBDA" />
+                      <circle cx="41" cy="39" r="10" fill="#34A853" stroke="#F4FBF7" strokeWidth="2.5" />
+                      <path
+                        d="M37 39.3l2.6 2.6 5.4-5.6"
+                        fill="none"
+                        stroke="#FFFFFF"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                </svg>
+                </s-box>
+                <s-stack direction="block" gap="small-200">
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1F36" }}>
+                    Store connected
+                  </span>
+                  <s-text color="subdued">
+                    {data.shopName} — {data.shop}
+                  </s-text>
+                </s-stack>
+                <s-badge
+                  tone="success"
+                  color="strong"
+                  icon="check-circle-filled"
+                >
+                  Live
+                </s-badge>
+              </s-grid>
+            </s-box>
+            <s-divider color="base" />
+            <s-box padding="base">
+              <s-grid
+                gridTemplateColumns="44px 1fr"
+                alignItems="start"
+                columnGap="base"
               >
-                {formatScope(scope)}
-              </s-badge>
-            ))}
-          </s-stack>
-        ) : (
-          <s-banner
-            heading="No permissions found"
-            tone="warning"
-          >
+                <s-box inlineSize="44px" blockSize="44px" overflow="hidden">
+                  <svg
+                    width="44"
+                    height="44"
+                    viewBox="0 0 56 56"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle cx="28" cy="28" r="28" fill="#EAF1FE" />
+                    <path
+                      d="M28 14l12 6v12l-12 6-12-6V20l12-6Z"
+                      fill="#FFFFFF"
+                      stroke="#B9CDF7"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M16 20l12 6 12-6"
+                      fill="none"
+                      stroke="#6A8DF0"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                    <path d="M28 26v12" stroke="#6A8DF0" strokeWidth="1.5" />
+                    <circle cx="41" cy="39" r="10" fill="#4A6FE0" stroke="#F4F7FE" strokeWidth="2.5" />
+                    <path
+                      d="M37 39h8M41 35v8"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </s-box>
+                <s-stack direction="block" gap="small-200">
+                  <span style={{ fontSize: 16, fontWeight: 700, color: "#1A1F36" }}>
+                    Shipping workflow
+                  </span>
+                  <s-paragraph>
+                    Manage preorders, status emails, Thursday invoices,
+                    shipping-paid alerts, and Friday reset. Use the steps
+                    below in order — when you mark a preorder step, the
+                    matching Shopify tag is added and Klaviyo sends the
+                    customer email. Tags, button labels, and template IDs are
+                    configured in{" "}
+                    <s-link href="/app/settings">Settings</s-link>.
+                  </s-paragraph>
+                </s-stack>
+              </s-grid>
+            </s-box>
+          </div>
+        </s-box>
+
+        {data.loadError && (
+          <s-banner heading="Could not load data" tone="critical">
+            <s-paragraph>{data.loadError}</s-paragraph>
             <s-paragraph>
-              No Admin API scopes were found in
-              the current Shopify session.
+              Restart the app with <s-text type="strong">shopify app dev</s-text>{" "}
+              and approve order scopes if prompted.
             </s-paragraph>
           </s-banner>
         )}
-      </s-section>
 
-      <s-section heading="Verification details">
-        <s-box
-          padding="base"
-          border="base"
-          borderRadius="base"
-          background="subdued"
-        >
-          <s-stack
-            direction="block"
-            gap="small"
-          >
-            <s-text>
-              Last verified
-            </s-text>
+        {tab === "preorders" && (
+          <s-banner heading="Preorder status workflow" tone="success">
+            Update each preorder in order: {data.preorderLabels.pieceMade} →{" "}
+            {data.preorderLabels.leavingForCanada} →{" "}
+            {data.preorderLabels.arrivedInCanada}. Completed steps show as
+            green success badges. Skirt deposits use{" "}
+            {data.preorderLabels.depositFulfilled}.
+            <s-button
+              slot="secondary-actions"
+              variant="secondary"
+              href="/app/settings"
+            >
+              Edit button labels &amp; order tags
+            </s-button>
+          </s-banner>
+        )}
 
-            <s-heading>
-              {new Date(
-                data.verifiedAt,
-              ).toLocaleString()}
-            </s-heading>
-
-            <s-text>
-              Verification was completed using
-              Shopify Admin GraphQL.
-            </s-text>
+        <s-section padding="base">
+          <s-stack direction="inline" gap="small" alignItems="center">
+            <TabButton
+              active={tab === "preorders"}
+              number="01"
+              label="Preorders — Awaiting Readiness"
+              onClick={() => setTab("preorders")}
+            />
+            <TabButton
+              active={tab === "emails"}
+              number="02"
+              label="Status emails (Klaviyo)"
+              onClick={() => setTab("emails")}
+            />
+            <TabButton
+              active={tab === "thursday"}
+              number="03"
+              label="Thursday invoice"
+              onClick={() => setTab("thursday")}
+            />
+            <TabButton
+              active={tab === "alerts"}
+              number="04"
+              label="After shipping paid"
+              onClick={() => setTab("alerts")}
+            />
+            <TabButton
+              active={tab === "friday"}
+              number="05"
+              label="Friday reset"
+              onClick={() => setTab("friday")}
+            />
           </s-stack>
-        </s-box>
-      </s-section>
+        </s-section>
 
-      <s-section>
-        <s-banner
-          heading="Production security"
-          tone="warning"
-        >
-          <s-paragraph>
-            Keep Shopify sessions in persistent
-            PostgreSQL storage. Never expose the
-            full token through a public route,
-            client-side JavaScript, GitHub,
-            screenshots or application logs.
-          </s-paragraph>
-        </s-banner>
-      </s-section>
-    </s-page>
-  );
-}
+        {tab === "preorders" && (
+          <s-section heading="Preorders — Awaiting Readiness" padding="base">
+            <s-stack direction="block" gap="large">
+              {data.preorders.length === 0 ? (
+                <s-banner heading="No preorders yet" tone="info">
+                  <s-paragraph>
+                    Create a test order in the store to see status actions here.
+                  </s-paragraph>
+                </s-banner>
+              ) : (
+                <s-stack direction="block" gap="base">
+                  <s-table>
+                    <s-search-field
+                      slot="filters"
+                      label="Search preorders"
+                      labelAccessibilityVisibility="exclusive"
+                      placeholder="Search by order #, customer, or email"
+                      value={preorderSearch}
+                      onChange={handlePreorderSearch}
+                      onInput={handlePreorderSearch}
+                    />
+                    <s-table-header-row>
+                      <s-table-header listSlot="primary">Order</s-table-header>
+                      <s-table-header listSlot="secondary">Customer</s-table-header>
+                      <s-table-header listSlot="labeled">Type</s-table-header>
+                      <s-table-header listSlot="inline">Actions</s-table-header>
+                    </s-table-header-row>
+                  <s-table-body>
+                    {pagedPreorders.map((order) => (
+                      <s-table-row key={order.id}>
+                        <s-table-cell>
+                          <s-link
+                            href={`shopify://admin/orders/${order.id
+                              .split("/")
+                              .pop()}`}
+                          >
+                            {order.name}
+                          </s-link>
+                        </s-table-cell>
+                        <s-table-cell>
+                          {order.customerName || order.email ? (
+                            <s-stack
+                              direction="inline"
+                              alignItems="center"
+                              gap="small-200"
+                            >
+                              <CustomerAvatar
+                                name={order.customerName || order.email || "?"}
+                              />
+                              <s-text>
+                                {order.customerName || order.email}
+                              </s-text>
+                            </s-stack>
+                          ) : (
+                            "—"
+                          )}
+                        </s-table-cell>
+                        <s-table-cell>
+                          {order.isSkirtDeposit ? (
+                            hasTag(
+                              order.tags,
+                              data.preorderTags.depositFulfilledTag,
+                            ) ? (
+                              <s-badge
+                                tone="neutral"
+                                color="strong"
+                                icon="check-circle"
+                              >
+                                Skirt deposit
+                              </s-badge>
+                            ) : (
+                              <s-badge tone="info" color="strong">
+                                Skirt deposit
+                              </s-badge>
+                            )
+                          ) : hasTag(
+                              order.tags,
+                              data.preorderTags.arrivedInCanadaTag,
+                            ) ||
+                            hasTag(
+                              order.tags,
+                              data.preorderTags.readyToShipTag,
+                            ) ? (
+                            <s-badge
+                              tone="neutral"
+                              color="strong"
+                              icon="check-circle"
+                            >
+                              Preorder
+                            </s-badge>
+                          ) : hasTag(
+                              order.tags,
+                              data.preorderTags.leavingForCanadaTag,
+                            ) ? (
+                            <s-badge tone="caution" color="strong">
+                              Preorder
+                            </s-badge>
+                          ) : hasTag(order.tags, data.preorderTags.pieceMadeTag) ? (
+                            <s-badge tone="info" color="strong">
+                              Preorder
+                            </s-badge>
+                          ) : (
+                            <s-badge tone="neutral">Preorder</s-badge>
+                          )}
+                        </s-table-cell>
+                        <s-table-cell>
+                          <PreorderStatusButtons
+                            order={order}
+                            busyAction={busyAction}
+                            onAction={runAction}
+                            labels={data.preorderLabels}
+                            workflowTags={data.preorderTags}
+                          />
+                        </s-table-cell>
+                      </s-table-row>
+                    ))}
+                  </s-table-body>
+                </s-table>
 
-function InformationCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <s-box
-      padding="base"
-      border="base"
-      borderRadius="base"
-      background="subdued"
-    >
-      <s-stack
-        direction="block"
-        gap="small"
-      >
-        <s-text>{label}</s-text>
-        <s-heading>{value}</s-heading>
-      </s-stack>
-    </s-box>
-  );
-}
+                {filteredPreorders.length === 0 && (
+                  <s-paragraph>
+                    No preorders match "{preorderSearch}".
+                  </s-paragraph>
+                )}
 
-function StatusCard({
-  label,
-  value,
-  tone,
-  description,
-}: {
-  label: string;
-  value: string;
-  tone:
-    | "success"
-    | "warning"
-    | "critical"
-    | "info";
-  description: string;
-}) {
-  return (
-    <s-box
-      padding="base"
-      border="base"
-      borderRadius="base"
-      background="subdued"
-    >
-      <s-stack
-        direction="block"
-        gap="small"
-      >
-        <s-text>{label}</s-text>
+                {totalPages > 1 && (
+                  <s-stack
+                    direction="inline"
+                    gap="base"
+                    alignItems="center"
+                    justifyContent="center"
+                    inlineSize="100%"
+                  >
+                    <s-button
+                      variant="secondary"
+                      disabled={page <= 1}
+                      onClick={() => setPage(page - 1)}
+                    >
+                      Previous
+                    </s-button>
+                    <s-text color="subdued">
+                      Page {page} of {totalPages}
+                    </s-text>
+                    <s-button
+                      variant="secondary"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage(page + 1)}
+                    >
+                      Next
+                    </s-button>
+                  </s-stack>
+                )}
+                </s-stack>
+              )}
+            </s-stack>
+          </s-section>
+        )}
 
-        <s-badge tone={tone}>
-          {value}
-        </s-badge>
+        {tab === "emails" && (
+          <s-section heading="Status emails" padding="base">
+            <s-stack direction="block" gap="large">
+              <s-box
+                background="base"
+                borderWidth="base"
+                borderStyle="solid"
+                borderColor="subdued"
+                borderRadius="large-100"
+                padding="large"
+              >
+                <s-stack direction="block" gap="base">
+                  <s-stack direction="inline" alignItems="center" gap="small-200">
+                    <s-badge tone="info" color="strong">
+                      How it works
+                    </s-badge>
+                  </s-stack>
+                  <s-paragraph>
+                    When a status tag is added, the app creates a Klaviyo event. A
+                    live Klaviyo Flow for that metric sends the email, then the
+                    app adds an email-sent tag so it is not sent again.
+                  </s-paragraph>
+                  <s-unordered-list>
+                    <s-list-item>
+                      {data.preorderLabels.pieceMade} → tag{" "}
+                      <s-text type="strong">{data.preorderTags.pieceMadeTag}</s-text>{" "}
+                      → metric "
+                      {KLAVIYO_STATUS_EMAIL_META.piece_made.metricName}" →
+                      template {data.klaviyoTemplates.pieceMadeTemplateId} →
+                      email-sent tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.pieceMadeEmailSentTag}
+                      </s-text>
+                    </s-list-item>
+                    <s-list-item>
+                      {data.preorderLabels.leavingForCanada} → tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.leavingForCanadaTag}
+                      </s-text>{" "}
+                      → metric "
+                      {KLAVIYO_STATUS_EMAIL_META.leaving_for_canada.metricName}
+                      " → template{" "}
+                      {data.klaviyoTemplates.leavingForCanadaTemplateId} →
+                      email-sent tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.leavingEmailSentTag}
+                      </s-text>
+                    </s-list-item>
+                    <s-list-item>
+                      {data.preorderLabels.arrivedInCanada} → tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.arrivedInCanadaTag}
+                      </s-text>{" "}
+                      → metric "
+                      {KLAVIYO_STATUS_EMAIL_META.arrived_in_canada.metricName}
+                      " → template{" "}
+                      {data.klaviyoTemplates.arrivedInCanadaTemplateId} →
+                      email-sent tag{" "}
+                      <s-text type="strong">
+                        {data.preorderTags.arrivedEmailSentTag}
+                      </s-text>
+                    </s-list-item>
+                  </s-unordered-list>
+                </s-stack>
+              </s-box>
 
-        <s-paragraph>
-          {description}
-        </s-paragraph>
-      </s-stack>
-    </s-box>
-  );
-}
+              <s-banner heading="Tags, labels &amp; templates" tone="info">
+                Configure Shopify order tags, button labels, and Klaviyo
+                template IDs on the Settings page.
+                <s-button
+                  slot="secondary-actions"
+                  variant="secondary"
+                  href="/app/settings"
+                >
+                  Open Settings
+                </s-button>
+              </s-banner>
 
-function formatScope(scope: string) {
-  return scope
-    .replace(/^read_/, "Read: ")
-    .replace(/^write_/, "Write: ")
-    .replaceAll("_", " ");
-}
+              <s-banner
+                heading={
+                  data.klaviyoConfigured
+                    ? "Klaviyo is connected"
+                    : "Klaviyo API key is missing"
+                }
+                tone={data.klaviyoConfigured ? "success" : "warning"}
+              >
+                To test: in Shopify Admin, add the tag{" "}
+                <s-text type="strong">piece-made-notified</s-text> to an
+                order. Confirm the customer receives the email and the order
+                gets <s-text type="strong">piece-made-email-sent</s-text>.
+                <s-button
+                  slot="secondary-actions"
+                  variant="secondary"
+                  href="/app/documentation"
+                >
+                  View setup guide
+                </s-button>
+              </s-banner>
 
-async function copyToClipboard(
-  value: string,
-) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(
-      value,
+              <s-stack direction="block" gap="base">
+                <s-paragraph>
+                  These buttons retry orders where the app has not yet
+                  successfully sent the Klaviyo event for a status tag (the
+                  email-sent tag is still missing) — for example a failed
+                  real-time send, or a tag added directly in Shopify Admin.
+                  They can't tell whether Klaviyo's Flow actually delivered
+                  an email it already accepted — check the Flow itself for
+                  that.
+                </s-paragraph>
+                <s-stack direction="inline" gap="base">
+                  <s-button
+                    variant={
+                      isBusy("status_emails_run:preview")
+                        ? "primary"
+                        : "secondary"
+                    }
+                    disabled={cycleBusy}
+                    {...(isBusy("status_emails_run:preview")
+                      ? { loading: true }
+                      : {})}
+                    onClick={() => runCycle("status_emails_run", true)}
+                  >
+                    Preview only (no emails sent)
+                  </s-button>
+                  <s-button
+                    variant="primary"
+                    disabled={cycleBusy}
+                    {...(isBusy("status_emails_run:run")
+                      ? { loading: true }
+                      : {})}
+                    onClick={() => runCycle("status_emails_run", false)}
+                  >
+                    Send pending emails now
+                  </s-button>
+                </s-stack>
+
+                {lastEmailRun?.rows && lastEmailRun.rows.length > 0 && (
+                  <s-box
+                    background="base"
+                    borderWidth="base"
+                    borderStyle="solid"
+                    borderColor="subdued"
+                    borderRadius="large-100"
+                    padding="none"
+                    overflow="hidden"
+                  >
+                    <s-box padding="base">
+                      <s-text type="strong">Last check result</s-text>
+                    </s-box>
+                    <s-divider color="base" />
+                    <s-table>
+                      <s-table-header-row>
+                        <s-table-header listSlot="primary">Order</s-table-header>
+                        <s-table-header listSlot="secondary">Job</s-table-header>
+                        <s-table-header listSlot="labeled">Result</s-table-header>
+                        <s-table-header listSlot="inline">Detail</s-table-header>
+                      </s-table-header-row>
+                      <s-table-body>
+                        {lastEmailRun.rows.map((row, i) => {
+                          const isPreview = row.detail?.includes("preview only");
+                          const label =
+                            row.result === "sent"
+                              ? "Email sent"
+                              : row.result === "error"
+                                ? "Failed"
+                                : isPreview
+                                  ? "Preview only"
+                                  : "Skipped";
+                          const tone =
+                            row.result === "sent"
+                              ? "success"
+                              : row.result === "error"
+                                ? "critical"
+                                : isPreview
+                                  ? "info"
+                                  : "neutral";
+                          const extra =
+                            row.result === "error"
+                              ? row.detail
+                              : row.detail?.includes("would send template")
+                                ? row.detail.replace("preview only — ", "")
+                                : undefined;
+                          return (
+                            <s-table-row key={`${row.orderName}-${row.job}-${i}`}>
+                              <s-table-cell>{row.orderName}</s-table-cell>
+                              <s-table-cell>{row.job}</s-table-cell>
+                              <s-table-cell>
+                                <s-badge tone={tone} color="strong">
+                                  {label}
+                                </s-badge>
+                              </s-table-cell>
+                              <s-table-cell>{extra || "—"}</s-table-cell>
+                            </s-table-row>
+                          );
+                        })}
+                      </s-table-body>
+                    </s-table>
+                  </s-box>
+                )}
+              </s-stack>
+            </s-stack>
+          </s-section>
+        )}
+
+        {tab === "thursday" && (
+          <s-section heading="Thursday shipping invoice" padding="base">
+            <s-stack direction="block" gap="large">
+              <s-paragraph>
+                Combines eligible preorder and ready-to-wear orders for the same
+                customer into one draft shipping invoice. Excludes Saskatoon and
+                India-only / mixed India orders.
+              </s-paragraph>
+
+              <s-box
+                background={manualTestOpen ? "subdued" : "base"}
+                borderWidth="base"
+                borderStyle="solid"
+                borderColor={manualTestOpen ? "strong" : "subdued"}
+                borderRadius="large"
+                padding="none"
+                overflow="hidden"
+              >
+                <s-clickable
+                  padding="base"
+                  inlineSize="100%"
+                  background={manualTestOpen ? "subdued" : "transparent"}
+                  accessibilityLabel={`${manualTestOpen ? "Collapse" : "Expand"} Manual Test — Thursday Shipping Invoice`}
+                  onClick={() => setManualTestOpen(!manualTestOpen)}
+                >
+                  <s-stack
+                    direction="inline"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    gap="base"
+                    inlineSize="100%"
+                  >
+                    <s-stack direction="inline" alignItems="center" gap="small-200">
+                      <s-badge tone={manualTestOpen ? "info" : "neutral"} color={manualTestOpen ? "strong" : "base"}>
+                        TEST
+                      </s-badge>
+                      <s-text type="strong">Manual Test — Thursday Shipping Invoice</s-text>
+                    </s-stack>
+                    <s-icon type={manualTestOpen ? "caret-up" : "caret-down"} />
+                  </s-stack>
+                </s-clickable>
+
+                {manualTestOpen ? (
+                  <>
+                    <s-divider color="strong" />
+                    <s-box background="base" padding="base">
+                      <s-stack gap="small-200">
+                        <s-unordered-list>
+                          <s-list-item>Create a fresh normal Shopify order.</s-list-item>
+                          <s-list-item>
+                            Use customer email: <s-text type="strong">test@gmail.com</s-text>
+                          </s-list-item>
+                          <s-list-item>Use a Canadian shipping address (not Saskatoon).</s-list-item>
+                          <s-list-item>Keep the order Paid and Unfulfilled.</s-list-item>
+                          <s-list-item>For isolated testing, add these Shopify tags:</s-list-item>
+                          <s-list-item>
+                            <s-unordered-list>
+                              <s-list-item>arrived-in-canada-notified</s-list-item>
+                              <s-list-item>ready-to-ship</s-list-item>
+                            </s-unordered-list>
+                          </s-list-item>
+                          <s-list-item>Do NOT add: thursday-email-sent, shipping-paid, pushed-to-next-weekend, hold-for-next-cycle</s-list-item>
+                          <s-list-item>Open: Shipping Manager → 03. Thursday invoice</s-list-item>
+                          <s-list-item>Click: Preview only (no invoices created)</s-list-item>
+                          <s-list-item>
+                            Confirm Preview shows: 1 customer, customer email, order number, item count, shipping amount
+                          </s-list-item>
+                          <s-list-item>If Preview shows 1 customer, click: Run Thursday cycle now</s-list-item>
+                        </s-unordered-list>
+
+                        <s-heading>Expected Result</s-heading>
+                        <s-unordered-list>
+                          <s-list-item>A new Shopify Draft Order is created.</s-list-item>
+                          <s-list-item>The draft invoice amount is 15.00 CAD for this test case.</s-list-item>
+                          <s-list-item>The customer receives the Klaviyo Thursday shipping invoice email.</s-list-item>
+                          <s-list-item>The original order receives the tag: <s-text type="strong">thursday-email-sent</s-text>.</s-list-item>
+                          <s-list-item>The email displays: customer name, item count, shipping total, working Pay Shipping button, working invoice URL.</s-list-item>
+                        </s-unordered-list>
+
+                        <s-banner tone="warning" heading="Warning">
+                          <s-paragraph>
+                            Use these manual tags only for isolated testing. In the real workflow, status and readiness tags should normally come from the app buttons or the configured automation.
+                          </s-paragraph>
+                        </s-banner>
+
+                        <s-banner tone="info" heading="Troubleshooting">
+                          <s-paragraph>
+                            If Preview shows 0 customers, check:
+                          </s-paragraph>
+                          <s-unordered-list>
+                            <s-list-item>order is a normal order, not a draft;</s-list-item>
+                            <s-list-item>order is Paid;</s-list-item>
+                            <s-list-item>order is Unfulfilled;</s-list-item>
+                            <s-list-item>shipping country is Canada;</s-list-item>
+                            <s-list-item>city is not Saskatoon;</s-list-item>
+                            <s-list-item>required tags are present;</s-list-item>
+                            <s-list-item>thursday-email-sent is not already present.</s-list-item>
+                          </s-unordered-list>
+                        </s-banner>
+                      </s-stack>
+                    </s-box>
+                  </>
+                ) : null}
+              </s-box>
+
+              <s-button-group gap="base" accessibilityLabel="Thursday cycle actions">
+                <s-button
+                  slot="secondary-actions"
+                  variant={
+                    isBusy("thursday_run:preview") ? "primary" : "secondary"
+                  }
+                  disabled={cycleBusy}
+                  {...(isBusy("thursday_run:preview") ? { loading: true } : {})}
+                  onClick={() => runCycle("thursday_run", true)}
+                >
+                  Preview only (no invoices created)
+                </s-button>
+                <s-button
+                  slot="primary-action"
+                  variant="primary"
+                  disabled={cycleBusy}
+                  {...(isBusy("thursday_run:run") ? { loading: true } : {})}
+                  onClick={() => runCycle("thursday_run", false)}
+                >
+                  Run Thursday cycle now
+                </s-button>
+              </s-button-group>
+
+              {!data.thursdayTemplateConfigured && (
+                <s-banner
+                  heading="Thursday email template ID is missing"
+                  tone="warning"
+                >
+                  <s-paragraph>
+                    Open Settings and set the Thursday shipping invoice
+                    template ID, then save. Preview and draft orders still work;
+                    invoice emails send after the ID is set.
+                  </s-paragraph>
+                </s-banner>
+              )}
+
+              {data.thursdayPreview && (
+                <s-box
+                  background="base"
+                  borderWidth="base"
+                  borderStyle="solid"
+                  borderColor="subdued"
+                  borderRadius="large-100"
+                  padding="none"
+                  overflow="hidden"
+                >
+                  <s-box padding="base">
+                    <s-text type="strong">
+                      Preview: {data.thursdayPreview.customersProcessed} customer(s)
+                    </s-text>
+                  </s-box>
+                  {data.thursdayPreview.results.length === 0 ? (
+                    <>
+                      <s-divider color="base" />
+                      <s-box padding="base">
+                        <s-paragraph>No qualifying orders this cycle.</s-paragraph>
+                      </s-box>
+                    </>
+                  ) : (
+                    <>
+                      <s-divider color="base" />
+                      <s-table>
+                        <s-table-header-row>
+                          <s-table-header listSlot="primary">Email</s-table-header>
+                          <s-table-header listSlot="secondary">Orders</s-table-header>
+                          <s-table-header listSlot="labeled">Items</s-table-header>
+                          <s-table-header listSlot="inline">Shipping</s-table-header>
+                        </s-table-header-row>
+                        <s-table-body>
+                          {data.thursdayPreview.results.map((row) => (
+                            <s-table-row key={row.email}>
+                              <s-table-cell>
+                                <s-stack
+                                  direction="inline"
+                                  alignItems="center"
+                                  gap="small-200"
+                                >
+                                  <CustomerAvatar name={row.email} />
+                                  <s-text>{row.email}</s-text>
+                                </s-stack>
+                              </s-table-cell>
+                              <s-table-cell>
+                                <s-text>{row.orderNames.join(", ")}</s-text>
+                              </s-table-cell>
+                              <s-table-cell>
+                                <s-badge tone="info" color="strong">
+                                  {row.itemCount}
+                                </s-badge>
+                              </s-table-cell>
+                              <s-table-cell>
+                                <s-badge tone="success" color="strong">
+                                  {row.shippingAmount}
+                                </s-badge>
+                              </s-table-cell>
+                            </s-table-row>
+                          ))}
+                        </s-table-body>
+                      </s-table>
+                    </>
+                  )}
+                </s-box>
+              )}
+            </s-stack>
+          </s-section>
+        )}
+
+        {tab === "alerts" && (() => {
+          const visibleAlerts = data.alerts.filter(
+            (order) => !heldOrderIds.has(order.id),
+          );
+          return (
+            <s-section heading="New item after shipping paid" padding="base">
+              <s-stack direction="block" gap="large">
+                <s-box
+                  background="base"
+                  borderWidth="base"
+                  borderStyle="solid"
+                  borderColor="subdued"
+                  borderRadius="large-100"
+                  padding="large"
+                >
+                  <s-stack direction="block" gap="base">
+                    <s-badge
+                      tone={visibleAlerts.length > 0 ? "warning" : "success"}
+                      color="strong"
+                    >
+                      {visibleAlerts.length} pending
+                    </s-badge>
+                    <s-paragraph>
+                      Ship now opens the exact order in Shopify Admin so staff
+                      can fulfil it, add tracking, and notify the customer
+                      manually. Hold for next Thursday adds the tag{" "}
+                      <s-text type="strong">hold-for-next-cycle</s-text>.
+                    </s-paragraph>
+                  </s-stack>
+                </s-box>
+                {visibleAlerts.length === 0 ? (
+                  <s-paragraph>No alerts right now.</s-paragraph>
+                ) : (
+                  <s-stack direction="block" gap="base">
+                    {visibleAlerts.map((order) => (
+                      <ShippingPaidAlert
+                        key={order.id}
+                        order={order}
+                        busy={
+                          busyAction === `${order.id}:hold_for_next_cycle`
+                        }
+                        onHold={(orderId) =>
+                          runAction(orderId, "hold_for_next_cycle")
+                        }
+                      />
+                    ))}
+                  </s-stack>
+                )}
+              </s-stack>
+            </s-section>
+          );
+        })()}
+
+        {tab === "friday" && (
+          <s-section heading="Friday reset" padding="base">
+            <s-stack direction="block" gap="large">
+              <s-box
+                background="base"
+                borderWidth="base"
+                borderStyle="solid"
+                borderColor="subdued"
+                borderRadius="large-100"
+                padding="large"
+              >
+                <s-stack direction="block" gap="base">
+                  <s-badge tone="success" color="strong">
+                    Automatic via Shopify Flow
+                  </s-badge>
+                  <s-paragraph>
+                    On Friday midnight (CST), Shopify Flow removes{" "}
+                    <s-text type="strong">thursday-email-sent</s-text> and adds{" "}
+                    <s-text type="strong">pushed-to-next-weekend</s-text>. The
+                    app then cancels the old unpaid draft invoice.
+                  </s-paragraph>
+                  <s-paragraph>
+                    Use the buttons below only as a manual backup if Flow did
+                    not run.
+                  </s-paragraph>
+                </s-stack>
+              </s-box>
+              <s-button-group gap="base" accessibilityLabel="Friday reset actions">
+                <s-button
+                  slot="secondary-actions"
+                  variant={isBusy("friday_run:preview") ? "primary" : "secondary"}
+                  disabled={cycleBusy}
+                  {...(isBusy("friday_run:preview") ? { loading: true } : {})}
+                  onClick={() => runCycle("friday_run", true)}
+                >
+                  Preview only (no changes)
+                </s-button>
+                <s-button
+                  slot="primary-action"
+                  variant="primary"
+                  tone="critical"
+                  disabled={cycleBusy}
+                  {...(isBusy("friday_run:run") ? { loading: true } : {})}
+                  onClick={() => runCycle("friday_run", false)}
+                >
+                  Run Friday backup now
+                </s-button>
+              </s-button-group>
+              {!data.cronConfigured && (
+                <s-banner heading="Scheduler settings incomplete" tone="warning">
+                  <s-paragraph>
+                    Set <s-text type="strong">CRON_SECRET</s-text> and{" "}
+                    <s-text type="strong">CRON_SHOP</s-text> for automated
+                    Thursday runs.
+                  </s-paragraph>
+                </s-banner>
+              )}
+            </s-stack>
+          </s-section>
+        )}
+      </s-page>
     );
-
-    return;
   }
 
-  const textarea =
-    document.createElement("textarea");
-
-  textarea.value = value;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-
-  document.body.appendChild(textarea);
-  textarea.select();
-
-  const copied =
-    document.execCommand("copy");
-
-  document.body.removeChild(textarea);
-
-  if (!copied) {
-    throw new Error(
-      "Clipboard copy failed",
-    );
-  }
-}
-
-export const headers: HeadersFunction = (
-  headersArgs,
-) => {
-  const headers = new Headers(
-    boundary.headers(headersArgs),
-  );
-
-  headers.set(
-    "Cache-Control",
-    "private, no-store, max-age=0",
-  );
-
-  headers.set("Pragma", "no-cache");
-  headers.set(
-    "Referrer-Policy",
-    "no-referrer",
-  );
-
-  return headers;
-};
+  export const headers: HeadersFunction = (headersArgs) => {
+    return boundary.headers(headersArgs);
+  };

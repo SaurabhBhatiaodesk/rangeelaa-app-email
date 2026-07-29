@@ -1,0 +1,31 @@
+-- CreateTable
+CREATE TABLE "ShopKlaviyoSettings" (
+    "shop" TEXT NOT NULL,
+    "klaviyoApiKey" TEXT NOT NULL DEFAULT '',
+    "pieceMadeTemplateId" TEXT NOT NULL DEFAULT '',
+    "leavingForCanadaTemplateId" TEXT NOT NULL DEFAULT '',
+    "arrivedInCanadaTemplateId" TEXT NOT NULL DEFAULT '',
+    "thursdayTemplateId" TEXT NOT NULL DEFAULT '',
+    "pieceMadeLabel" TEXT NOT NULL DEFAULT '',
+    "leavingForCanadaLabel" TEXT NOT NULL DEFAULT '',
+    "arrivedInCanadaLabel" TEXT NOT NULL DEFAULT '',
+    "depositFulfilledLabel" TEXT NOT NULL DEFAULT '',
+    "depositFulfilledDoneLabel" TEXT NOT NULL DEFAULT '',
+    "pieceMadeTag" TEXT NOT NULL DEFAULT '',
+    "leavingForCanadaTag" TEXT NOT NULL DEFAULT '',
+    "arrivedInCanadaTag" TEXT NOT NULL DEFAULT '',
+    "pieceMadeEmailSentTag" TEXT NOT NULL DEFAULT '',
+    "leavingEmailSentTag" TEXT NOT NULL DEFAULT '',
+    "arrivedEmailSentTag" TEXT NOT NULL DEFAULT '',
+    "readyToShipTag" TEXT NOT NULL DEFAULT '',
+    "groupTag" TEXT NOT NULL DEFAULT '',
+    "partialTag" TEXT NOT NULL DEFAULT '',
+    "depositFulfilledTag" TEXT NOT NULL DEFAULT '',
+    "thursdayEmailSentTag" TEXT NOT NULL DEFAULT '',
+    "shippingPaidTag" TEXT NOT NULL DEFAULT '',
+    "holdForNextCycleTag" TEXT NOT NULL DEFAULT '',
+    "pushedToNextWeekendTag" TEXT NOT NULL DEFAULT '',
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ShopKlaviyoSettings_pkey" PRIMARY KEY ("shop")
+);
