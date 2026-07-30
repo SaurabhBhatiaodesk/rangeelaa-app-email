@@ -24,6 +24,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
     previewThursdayPools,
     runThursdayCycle,
   } from "../lib/thursday-cycle.server";
+  import { parseAllowedShippingCountryCodes } from "../lib/cycle-shared.server";
   import { runFridayReset } from "../lib/friday-reset.server";
   import { runStatusEmailPoller } from "../lib/status-emails.server";
   import type { StatusAction } from "../lib/tags";
@@ -64,6 +65,9 @@ import { useEffect, useRef, useState, startTransition } from "react";
     const base = {
       shop: session.shop,
       shopName,
+      allowedCountryCodesLabel: parseAllowedShippingCountryCodes(
+        shopSettings.preorderTags.allowedShippingCountryCodes,
+      ).join("/"),
       klaviyoConfigured: shopSettings.klaviyoApiKeySource !== "none",
       thursdayTemplateConfigured: Boolean(
         shopSettings.klaviyoTemplates.thursdayTemplateId,
@@ -260,7 +264,6 @@ import { useEffect, useRef, useState, startTransition } from "react";
     } | null>(null);
 
     const [preorderSearch, setPreorderSearch] = useState("");
-
     const filteredPreorders = (() => {
       const q = preorderSearch.trim().toLowerCase();
       if (!q) return data.preorders;
@@ -990,8 +993,9 @@ import { useEffect, useRef, useState, startTransition } from "react";
             <s-stack direction="block" gap="large">
               <s-paragraph>
                 Combines eligible preorder and ready-to-wear orders for the same
-                customer into one draft shipping invoice. Excludes Saskatoon and
-                India-only / mixed India orders.
+                customer into one draft shipping invoice. Uses the allowed
+                shipping countries from Settings ({data.allowedCountryCodesLabel}).
+                Excludes Saskatoon and India-only / mixed India orders.
               </s-paragraph>
 
               <s-box

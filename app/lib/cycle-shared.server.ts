@@ -48,7 +48,10 @@ export type ItemRoutingTags = {
   canadaItemTag?: string;
   dispatchItemTag?: string;
   indiaItemTag?: string;
+  allowedShippingCountryCodes?: string;
 };
+
+export const DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES = ["CA", "US"] as const;
 
 export function countCanadaDispatchItems(
   lineItems: LineItemInfo[],
@@ -73,9 +76,27 @@ export function hasIndiaItems(
   return lineItems.some((item) => productHasTag(item.productTags, indiaTag));
 }
 
-export function isCanadaOrUsShipping(order: CycleOrder): boolean {
+export function parseAllowedShippingCountryCodes(
+  value: string | null | undefined,
+): string[] {
+  const parsed = (value || "")
+    .split(",")
+    .map((code) => code.trim().toUpperCase())
+    .filter((code) => /^[A-Z]{2}$/.test(code));
+
+  return parsed.length > 0
+    ? Array.from(new Set(parsed))
+    : [...DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES];
+}
+
+export function isAllowedShippingCountry(
+  order: { shippingCountryCode: string | null },
+  routingTags: ItemRoutingTags = {},
+): boolean {
   const country = (order.shippingCountryCode || "").toUpperCase();
-  return country === "CA" || country === "US";
+  return parseAllowedShippingCountryCodes(
+    routingTags.allowedShippingCountryCodes,
+  ).includes(country);
 }
 
 export function isSaskatoon(order: CycleOrder): boolean {

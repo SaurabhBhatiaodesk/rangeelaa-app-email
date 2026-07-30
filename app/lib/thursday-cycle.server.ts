@@ -12,7 +12,7 @@ import {
   countCanadaDispatchItems,
   graphqlJson,
   hasIndiaItems,
-  isCanadaOrUsShipping,
+  isAllowedShippingCountry,
   isSaskatoon,
   passesCycleTagGate,
 } from "./cycle-shared.server";
@@ -156,7 +156,7 @@ function isPool1Preorder(
   if (!hasTag(order.tags, readyToShipTag)) return false;
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
-  if (!isCanadaOrUsShipping(order)) return false;
+  if (!isAllowedShippingCountry(order, routingTags)) return false;
   if (
     hasIndiaItems(order.lineItems, routingTags) &&
     countCanadaDispatchItems(order.lineItems, routingTags) === 0
@@ -178,7 +178,7 @@ function isPool2Rtw(
   if (fulfillment !== "UNFULFILLED") return false;
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
-  if (!isCanadaOrUsShipping(order)) return false;
+  if (!isAllowedShippingCountry(order, routingTags)) return false;
 
   const canadaCount = countCanadaDispatchItems(order.lineItems, routingTags);
   if (canadaCount < 1) return false;

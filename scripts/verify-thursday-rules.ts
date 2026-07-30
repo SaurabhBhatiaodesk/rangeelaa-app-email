@@ -5,7 +5,7 @@
 import {
   countCanadaDispatchItems,
   hasIndiaItems,
-  isCanadaOrUsShipping,
+  isAllowedShippingCountry,
   isSaskatoon,
   passesCycleTagGate,
   type CycleOrder,
@@ -71,7 +71,14 @@ const sask = order({
   shippingCountryCode: "CA",
 });
 assert(isSaskatoon(sask), "Saskatoon detect");
-assert(isCanadaOrUsShipping(sask), "CA shipping");
+assert(isAllowedShippingCountry(sask), "CA shipping");
+assert(
+  isAllowedShippingCountry(
+    order({ tags: [], shippingCountryCode: "GB" }),
+    { allowedShippingCountryCodes: "CA,US,GB" },
+  ),
+  "GB shipping can be allowed from settings",
+);
 
 assert(countCanadaDispatchItems([canadaItem, indiaItem]) === 2, "count canada only");
 assert(hasIndiaItems([canadaItem, indiaItem]), "detect india");

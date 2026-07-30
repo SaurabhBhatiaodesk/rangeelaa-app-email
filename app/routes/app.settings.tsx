@@ -75,6 +75,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       canadaItemTag: "",
       dispatchItemTag: "",
       indiaItemTag: "",
+      allowedShippingCountryCodes: "",
     });
     const settings = await getShopSettings(session.shop);
     return {
@@ -369,6 +370,22 @@ export default function SettingsPage() {
                 value={field(form, "indiaItemTag")}
                 defaultValue={data.defaults.tags.indiaItemTag}
                 onChange={update("indiaItemTag")}
+              />
+            </s-stack>
+          </s-section>
+
+          <s-section heading="Shipping eligibility" padding="base">
+            <s-stack direction="block" gap="base">
+              <s-paragraph>
+                Two-letter country codes allowed for Thursday invoices and
+                shipping-paid alerts. Separate multiple countries with commas.
+              </s-paragraph>
+              <s-text-field
+                label="Allowed shipping countries"
+                name="allowedShippingCountryCodes"
+                value={field(form, "allowedShippingCountryCodes")}
+                details={`Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
+                onChange={update("allowedShippingCountryCodes")}
               />
             </s-stack>
           </s-section>

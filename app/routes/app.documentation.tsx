@@ -208,7 +208,7 @@ export default function DocumentationPage() {
               Pool 1 includes preorder orders tagged arrived in Canada and
               ready to ship. Pool 2 includes paid, unfulfilled RTW orders
               with at least one Canada or dispatch product-tagged item.
-              Saskatoon is excluded, Canada/US shipping is required, and
+              Saskatoon is excluded, shipping country must match Settings, and
               India-only or mixed India RTW orders are excluded.
             </s-paragraph>
           </s-banner>
@@ -367,7 +367,7 @@ export default function DocumentationPage() {
           <s-list-item>
             <s-text type="strong">Order not showing in Tab 03
             preview</s-text> — it needs every condition at once (paid,
-            unfulfilled, Canada/US shipping, not Saskatoon, and at least one
+            unfulfilled, allowed shipping country, not Saskatoon, and at least one
             product item tagged with the configured Canada or dispatch tag
             for RTW orders)
           </s-list-item>

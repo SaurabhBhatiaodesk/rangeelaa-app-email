@@ -13,6 +13,7 @@ import { sendStatusEmailIfNeeded } from "./send-status-email.server";
 import {
   countCanadaDispatchItems,
   hasIndiaItems,
+  isAllowedShippingCountry,
   type LineItemInfo,
 } from "./cycle-shared.server";
 
@@ -265,8 +266,7 @@ export async function fetchShippingPaidAlerts(
       const city = (order.shippingCity || "").toLowerCase();
       if (city === "saskatoon") return false;
 
-      const country = (order.shippingCountryCode || "").toUpperCase();
-      if (country && country !== "CA" && country !== "US") return false;
+      if (!isAllowedShippingCountry(order, workflowTags)) return false;
 
       if (countCanadaDispatchItems(order.lineItems, workflowTags) < 1) {
         return false;

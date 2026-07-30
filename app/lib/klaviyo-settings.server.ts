@@ -1,4 +1,5 @@
 import prisma from "../db.server";
+import { DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES } from "./cycle-shared.server";
 import { TAGS, type StatusEmailAction } from "./tags";
 
 /** Default Klaviyo template IDs (used when admin has not saved overrides). */
@@ -37,6 +38,7 @@ export const DEFAULT_PREORDER_TAGS = {
   canadaItemTag: "canada",
   dispatchItemTag: "dispatch",
   indiaItemTag: "india",
+  allowedShippingCountryCodes: DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES.join(","),
 } as const;
 
 export type KlaviyoTemplateIds = {
@@ -72,6 +74,7 @@ export type PreorderWorkflowTags = {
   canadaItemTag: string;
   dispatchItemTag: string;
   indiaItemTag: string;
+  allowedShippingCountryCodes: string;
 };
 
 export type ShopAppSettings = {
@@ -237,6 +240,10 @@ export async function getShopSettings(shop: string): Promise<ShopAppSettings> {
         row?.indiaItemTag,
         DEFAULT_PREORDER_TAGS.indiaItemTag,
       ),
+      allowedShippingCountryCodes: resolveTag(
+        row?.allowedShippingCountryCodes,
+        DEFAULT_PREORDER_TAGS.allowedShippingCountryCodes,
+      ),
     },
   };
 }
@@ -285,6 +292,9 @@ export async function saveShopSettings(
       canadaItemTag: trimOrEmpty(input.canadaItemTag),
       dispatchItemTag: trimOrEmpty(input.dispatchItemTag),
       indiaItemTag: trimOrEmpty(input.indiaItemTag),
+      allowedShippingCountryCodes: trimOrEmpty(
+        input.allowedShippingCountryCodes,
+      ),
     },
     update: {
       klaviyoApiKey: trimOrEmpty(input.klaviyoApiKey),
@@ -316,6 +326,9 @@ export async function saveShopSettings(
       canadaItemTag: trimOrEmpty(input.canadaItemTag),
       dispatchItemTag: trimOrEmpty(input.dispatchItemTag),
       indiaItemTag: trimOrEmpty(input.indiaItemTag),
+      allowedShippingCountryCodes: trimOrEmpty(
+        input.allowedShippingCountryCodes,
+      ),
     },
   });
 }
@@ -368,6 +381,9 @@ export function parseShopSettingsForm(formData: FormData): ShopSettingsInput {
     canadaItemTag: String(formData.get("canadaItemTag") ?? ""),
     dispatchItemTag: String(formData.get("dispatchItemTag") ?? ""),
     indiaItemTag: String(formData.get("indiaItemTag") ?? ""),
+    allowedShippingCountryCodes: String(
+      formData.get("allowedShippingCountryCodes") ?? "",
+    ),
   };
 }
 
