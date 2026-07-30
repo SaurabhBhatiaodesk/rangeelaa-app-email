@@ -44,17 +44,33 @@ export function productHasTag(tags: string[], tag: string): boolean {
   return tags.some((t) => t.toLowerCase() === tag.toLowerCase());
 }
 
-export function countCanadaDispatchItems(lineItems: LineItemInfo[]): number {
+export type ItemRoutingTags = {
+  canadaItemTag?: string;
+  dispatchItemTag?: string;
+  indiaItemTag?: string;
+};
+
+export function countCanadaDispatchItems(
+  lineItems: LineItemInfo[],
+  routingTags: ItemRoutingTags = {},
+): number {
+  const canadaTag = routingTags.canadaItemTag || "canada";
+  const dispatchTag = routingTags.dispatchItemTag || "dispatch";
+
   return lineItems.reduce((sum, item) => {
-    const isCanada = productHasTag(item.productTags, "canada");
-    const isDispatch = productHasTag(item.productTags, "dispatch");
+    const isCanada = productHasTag(item.productTags, canadaTag);
+    const isDispatch = productHasTag(item.productTags, dispatchTag);
     if (isCanada || isDispatch) return sum + item.quantity;
     return sum;
   }, 0);
 }
 
-export function hasIndiaItems(lineItems: LineItemInfo[]): boolean {
-  return lineItems.some((item) => productHasTag(item.productTags, "india"));
+export function hasIndiaItems(
+  lineItems: LineItemInfo[],
+  routingTags: ItemRoutingTags = {},
+): boolean {
+  const indiaTag = routingTags.indiaItemTag || "india";
+  return lineItems.some((item) => productHasTag(item.productTags, indiaTag));
 }
 
 export function isCanadaOrUsShipping(order: CycleOrder): boolean {

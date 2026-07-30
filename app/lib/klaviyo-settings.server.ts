@@ -34,6 +34,9 @@ export const DEFAULT_PREORDER_TAGS = {
   shippingPaidTag: TAGS.SHIPPING_PAID,
   holdForNextCycleTag: TAGS.HOLD_FOR_NEXT_CYCLE,
   pushedToNextWeekendTag: TAGS.PUSHED_TO_NEXT_WEEKEND,
+  canadaItemTag: "canada",
+  dispatchItemTag: "dispatch",
+  indiaItemTag: "india",
 } as const;
 
 export type KlaviyoTemplateIds = {
@@ -66,6 +69,9 @@ export type PreorderWorkflowTags = {
   shippingPaidTag: string;
   holdForNextCycleTag: string;
   pushedToNextWeekendTag: string;
+  canadaItemTag: string;
+  dispatchItemTag: string;
+  indiaItemTag: string;
 };
 
 export type ShopAppSettings = {
@@ -219,6 +225,18 @@ export async function getShopSettings(shop: string): Promise<ShopAppSettings> {
         row?.pushedToNextWeekendTag,
         DEFAULT_PREORDER_TAGS.pushedToNextWeekendTag,
       ),
+      canadaItemTag: resolveTag(
+        row?.canadaItemTag,
+        DEFAULT_PREORDER_TAGS.canadaItemTag,
+      ),
+      dispatchItemTag: resolveTag(
+        row?.dispatchItemTag,
+        DEFAULT_PREORDER_TAGS.dispatchItemTag,
+      ),
+      indiaItemTag: resolveTag(
+        row?.indiaItemTag,
+        DEFAULT_PREORDER_TAGS.indiaItemTag,
+      ),
     },
   };
 }
@@ -264,6 +282,9 @@ export async function saveShopSettings(
       shippingPaidTag: trimOrEmpty(input.shippingPaidTag),
       holdForNextCycleTag: trimOrEmpty(input.holdForNextCycleTag),
       pushedToNextWeekendTag: trimOrEmpty(input.pushedToNextWeekendTag),
+      canadaItemTag: trimOrEmpty(input.canadaItemTag),
+      dispatchItemTag: trimOrEmpty(input.dispatchItemTag),
+      indiaItemTag: trimOrEmpty(input.indiaItemTag),
     },
     update: {
       klaviyoApiKey: trimOrEmpty(input.klaviyoApiKey),
@@ -292,6 +313,9 @@ export async function saveShopSettings(
       shippingPaidTag: trimOrEmpty(input.shippingPaidTag),
       holdForNextCycleTag: trimOrEmpty(input.holdForNextCycleTag),
       pushedToNextWeekendTag: trimOrEmpty(input.pushedToNextWeekendTag),
+      canadaItemTag: trimOrEmpty(input.canadaItemTag),
+      dispatchItemTag: trimOrEmpty(input.dispatchItemTag),
+      indiaItemTag: trimOrEmpty(input.indiaItemTag),
     },
   });
 }
@@ -341,6 +365,9 @@ export function parseShopSettingsForm(formData: FormData): ShopSettingsInput {
     pushedToNextWeekendTag: String(
       formData.get("pushedToNextWeekendTag") ?? "",
     ),
+    canadaItemTag: String(formData.get("canadaItemTag") ?? ""),
+    dispatchItemTag: String(formData.get("dispatchItemTag") ?? ""),
+    indiaItemTag: String(formData.get("indiaItemTag") ?? ""),
   };
 }
 

@@ -10,6 +10,11 @@ import type {
   PreorderWorkflowTags,
 } from "./klaviyo-settings.server";
 import { sendStatusEmailIfNeeded } from "./send-status-email.server";
+import {
+  countCanadaDispatchItems,
+  hasIndiaItems,
+  type LineItemInfo,
+} from "./cycle-shared.server";
 
 export type ShippingOrder = {
   id: string;
@@ -21,6 +26,7 @@ export type ShippingOrder = {
   customerName: string | null;
   shippingCity: string | null;
   shippingCountryCode: string | null;
+  lineItems: LineItemInfo[];
   isSkirtDeposit: boolean;
   needsShippingPaidAlert: boolean;
 };
@@ -45,6 +51,17 @@ const ORDER_NODE_FIELDS = `
   shippingAddress {
     city
     countryCodeV2
+  }
+  lineItems(first: 100) {
+    edges {
+      node {
+        title
+        quantity
+        product {
+          tags
+        }
+      }
+    }
   }
 `;
 
@@ -86,6 +103,22 @@ async function fetchOrdersByQuery(
     const shipping = node.shippingAddress as
       | { city?: string; countryCodeV2?: string }
       | null;
+    const lineEdges =
+      (
+        node.lineItems as {
+          edges: { node: Record<string, unknown> }[];
+        }
+      )?.edges ?? [];
+
+    const lineItems: LineItemInfo[] = lineEdges.map((lineEdge) => {
+      const line = lineEdge.node;
+      const product = line.product as { tags?: string[] | string } | null;
+      return {
+        title: String(line.title || ""),
+        quantity: Number(line.quantity || 0),
+        productTags: normalizeTags(product?.tags),
+      };
+    });
 
     return {
       id: node.id as string,
@@ -98,6 +131,7 @@ async function fetchOrdersByQuery(
       customerName: customer?.displayName ?? null,
       shippingCity: shipping?.city ?? null,
       shippingCountryCode: shipping?.countryCodeV2 ?? null,
+      lineItems,
       isSkirtDeposit: isSkirtDeposit(
         tags,
         skirtDepositTags.groupTag,
@@ -233,6 +267,11 @@ export async function fetchShippingPaidAlerts(
 
       const country = (order.shippingCountryCode || "").toUpperCase();
       if (country && country !== "CA" && country !== "US") return false;
+
+      if (countCanadaDispatchItems(order.lineItems, workflowTags) < 1) {
+        return false;
+      }
+      if (hasIndiaItems(order.lineItems, workflowTags)) return false;
 
       return true;
     })

@@ -30,23 +30,23 @@ function DocAccordion({ items }: { items: AccordionItem[] }) {
   const [openId, setOpenId] = useState<string>(items[0]?.id ?? "");
 
   return (
-    <s-stack gap="base">
+    <s-stack gap="small-400">
       {items.map((item, index) => {
         const open = openId === item.id;
         const badgeTone = item.tone ?? "info";
         return (
           <s-box
             key={item.id}
-            background={open ? "subdued" : "base"}
-            borderWidth={open ? "large" : "base"}
+            background="base"
+            borderWidth="base"
             borderStyle="solid"
             borderColor={open ? "strong" : "subdued"}
-            borderRadius="large-100"
+            borderRadius="base"
             padding="none"
             overflow="hidden"
           >
             <s-clickable
-              padding="large"
+              padding="base"
               inlineSize="100%"
               background={open ? "subdued" : "transparent"}
               accessibilityLabel={`${open ? "Collapse" : "Expand"} ${item.title}`}
@@ -63,7 +63,6 @@ function DocAccordion({ items }: { items: AccordionItem[] }) {
                   <s-badge
                     tone={open ? badgeTone : "neutral"}
                     color="strong"
-                    size="large-100"
                     icon={TONE_ICON[badgeTone]}
                   >
                     {String(index + 1).padStart(2, "0")}
@@ -79,8 +78,8 @@ function DocAccordion({ items }: { items: AccordionItem[] }) {
             </s-clickable>
             {open ? (
               <>
-                <s-divider color="strong" />
-                <s-box background="base" padding="large">
+                <s-divider />
+                <s-box background="base" padding="base">
                   {item.content}
                 </s-box>
               </>
@@ -157,7 +156,7 @@ export default function DocumentationPage() {
               failure).
             </s-list-item>
           </s-ordered-list>
-          <s-banner tone="warning" heading="What the email-sent tag really means">
+          <s-banner tone="info" heading="Email-sent tag">
             <s-paragraph>
               The email-sent tag only confirms the app successfully handed
               the email off to Klaviyo — it does not guarantee the
@@ -202,6 +201,15 @@ export default function DocumentationPage() {
               an invoice. Someone has to open this tab and click{" "}
               <s-text type="strong">Run Thursday cycle now</s-text> (or the
               weekly scheduled job runs it automatically, if configured).
+            </s-paragraph>
+          </s-banner>
+          <s-banner tone="info" heading="What qualifies">
+            <s-paragraph>
+              Pool 1 includes preorder orders tagged arrived in Canada and
+              ready to ship. Pool 2 includes paid, unfulfilled RTW orders
+              with at least one Canada or dispatch product-tagged item.
+              Saskatoon is excluded, Canada/US shipping is required, and
+              India-only or mixed India RTW orders are excluded.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -260,9 +268,11 @@ export default function DocumentationPage() {
           </s-ordered-list>
           <s-banner tone="info" heading="Backup, not the only path">
             <s-paragraph>
-              This normally happens automatically (Friday midnight) via a
-              Shopify Flow plus the app's own background check. Use this
-              button only if that didn't run and unpaid orders are stuck.
+              This now runs automatically from Heroku Scheduler. The
+              scheduler calls the app daily at 6:00 AM UTC, and the app only
+              performs the reset when it is Friday in America/Chicago. Use
+              this button only if the automatic job did not run and unpaid
+              orders are stuck.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -331,6 +341,19 @@ export default function DocumentationPage() {
       ),
     },
     {
+      id: "product-item-tags",
+      title: "Product item tags",
+      tone: "info",
+      content: (
+        <s-paragraph>
+          Open <s-link href="/app/settings">Settings</s-link> to change the
+          product tags used for Canada, dispatch, and India routing. These
+          tags decide which RTW line items qualify for Thursday invoices and
+          shipping-paid alerts. Defaults are canada, dispatch, and india.
+        </s-paragraph>
+      ),
+    },
+    {
       id: "problems",
       title: "Common problems",
       tone: "warning",
@@ -345,7 +368,8 @@ export default function DocumentationPage() {
             <s-text type="strong">Order not showing in Tab 03
             preview</s-text> — it needs every condition at once (paid,
             unfulfilled, Canada/US shipping, not Saskatoon, and at least one
-            line item tagged canada or dispatch for RTW orders)
+            product item tagged with the configured Canada or dispatch tag
+            for RTW orders)
           </s-list-item>
           <s-list-item>
             <s-text type="strong">Friday reset shows a red "issue(s)"
@@ -357,6 +381,11 @@ export default function DocumentationPage() {
             expected; that endpoint is retired, the app uses Klaviyo events
             + Flows instead
           </s-list-item>
+          <s-list-item>
+            <s-text type="strong">Wrong products are qualifying</s-text> - open
+            Settings and check the Product item tags for Canada, dispatch,
+            and India
+          </s-list-item>
         </s-unordered-list>
       ),
     },
@@ -365,15 +394,14 @@ export default function DocumentationPage() {
   return (
     <s-page heading="Documentation" inlineSize="large">
       <s-section heading="Your 5-Step Weekly Workflow" padding="base">
-        <s-banner heading="5 tabs, one weekly cycle" tone="info">
+        <s-stack gap="base">
           <s-paragraph>
             Rangeela Shipping Manager automates preorder status updates,
             weekly combined shipping invoices, the "bought again after
-            paying" alert, and the Friday cleanup for unpaid invoices. Open
-            a step below to see what it does and how its buttons work.
+            paying" alert, and the Friday cleanup for unpaid invoices.
           </s-paragraph>
-        </s-banner>
-        <DocAccordion items={tabItems} />
+          <DocAccordion items={tabItems} />
+        </s-stack>
       </s-section>
 
       <s-section heading="Good to Know" padding="base">

@@ -7,6 +7,7 @@ import {
   type AdminGraphql,
   type CycleGateTags,
   type CycleOrder,
+  type ItemRoutingTags,
   type LineItemInfo,
   countCanadaDispatchItems,
   graphqlJson,
@@ -149,49 +150,64 @@ function isPool1Preorder(
   arrivedInCanadaTag: string,
   readyToShipTag: string,
   gateTags: CycleGateTags,
+  routingTags: ItemRoutingTags,
 ): boolean {
   if (!hasTag(order.tags, arrivedInCanadaTag)) return false;
   if (!hasTag(order.tags, readyToShipTag)) return false;
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
   if (!isCanadaOrUsShipping(order)) return false;
-  if (hasIndiaItems(order.lineItems) && countCanadaDispatchItems(order.lineItems) === 0) {
+  if (
+    hasIndiaItems(order.lineItems, routingTags) &&
+    countCanadaDispatchItems(order.lineItems, routingTags) === 0
+  ) {
     return false;
   }
   // Prefer counting canada/dispatch; if none tagged, count all non-india qty as fallback for pure preorders
   return true;
 }
 
-function isPool2Rtw(order: CycleOrder, gateTags: CycleGateTags): boolean {
+function isPool2Rtw(
+  order: CycleOrder,
+  gateTags: CycleGateTags,
+  routingTags: ItemRoutingTags,
+): boolean {
   const financial = (order.displayFinancialStatus || "").toUpperCase();
   const fulfillment = (order.displayFulfillmentStatus || "").toUpperCase();
   if (financial !== "PAID") return false;
-  if (fulfillment === "FULFILLED") return false;
+  if (fulfillment !== "UNFULFILLED") return false;
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
   if (!isCanadaOrUsShipping(order)) return false;
 
-  const canadaCount = countCanadaDispatchItems(order.lineItems);
+  const canadaCount = countCanadaDispatchItems(order.lineItems, routingTags);
   if (canadaCount < 1) return false;
 
   // Mixed or india-only excluded
-  if (hasIndiaItems(order.lineItems)) return false;
+  if (hasIndiaItems(order.lineItems, routingTags)) return false;
 
   return true;
 }
 
-function billableItemCount(order: CycleOrder): number {
-  const tagged = countCanadaDispatchItems(order.lineItems);
+function billableItemCount(
+  order: CycleOrder,
+  routingTags: ItemRoutingTags,
+): number {
+  const tagged = countCanadaDispatchItems(order.lineItems, routingTags);
   if (tagged > 0) return tagged;
   // Preorders may not use canada/dispatch product tags — count non-india units
   return order.lineItems.reduce((sum, item) => {
-    if (productHasIndia(item.productTags)) return sum;
+    if (productHasIndia(item.productTags, routingTags)) return sum;
     return sum + item.quantity;
   }, 0);
 }
 
-function productHasIndia(tags: string[]): boolean {
-  return tags.some((t) => t.toLowerCase() === "india");
+function productHasIndia(
+  tags: string[],
+  routingTags: ItemRoutingTags,
+): boolean {
+  const indiaTag = routingTags.indiaItemTag || "india";
+  return tags.some((t) => t.toLowerCase() === indiaTag.toLowerCase());
 }
 
 export type ThursdayCustomerResult = {
@@ -425,7 +441,7 @@ export async function runThursdayCycle(
       [
         "status:open",
         "financial_status:paid",
-        "(fulfillment_status:unfulfilled OR fulfillment_status:partial)",
+        "fulfillment_status:unfulfilled",
       ].join(" AND "),
     ),
   ]);
@@ -436,9 +452,12 @@ export async function runThursdayCycle(
       arrivedInCanadaTag,
       workflowTags.readyToShipTag,
       gateTags,
+      workflowTags,
     ),
   );
-  const pool2 = pool2Raw.filter((order) => isPool2Rtw(order, gateTags));
+  const pool2 = pool2Raw.filter((order) =>
+    isPool2Rtw(order, gateTags, workflowTags),
+  );
 
   const byId = new Map<string, CycleOrder>();
   for (const order of [...pool1, ...pool2]) {
@@ -465,7 +484,7 @@ export async function runThursdayCycle(
 
   for (const [email, orders] of byEmail) {
     const itemCount = orders.reduce(
-      (sum, order) => sum + billableItemCount(order),
+      (sum, order) => sum + billableItemCount(order, workflowTags),
       0,
     );
     if (itemCount <= 0) continue;

@@ -1,0 +1,4 @@
+ALTER TABLE "ShopKlaviyoSettings"
+ADD COLUMN "canadaItemTag" TEXT NOT NULL DEFAULT '',
+ADD COLUMN "dispatchItemTag" TEXT NOT NULL DEFAULT '',
+ADD COLUMN "indiaItemTag" TEXT NOT NULL DEFAULT '';

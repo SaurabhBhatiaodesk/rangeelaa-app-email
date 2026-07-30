@@ -59,5 +59,8 @@ model ShopKlaviyoSettings {
   shippingPaidTag            String   @default("")
   holdForNextCycleTag        String   @default("")
   pushedToNextWeekendTag     String   @default("")
+  canadaItemTag              String   @default("")
+  dispatchItemTag            String   @default("")
+  indiaItemTag               String   @default("")
   updatedAt                  DateTime @updatedAt
 }

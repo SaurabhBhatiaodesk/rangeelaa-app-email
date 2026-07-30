@@ -72,6 +72,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       shippingPaidTag: "",
       holdForNextCycleTag: "",
       pushedToNextWeekendTag: "",
+      canadaItemTag: "",
+      dispatchItemTag: "",
+      indiaItemTag: "",
     });
     const settings = await getShopSettings(session.shop);
     return {
@@ -336,6 +339,36 @@ export default function SettingsPage() {
                 value={field(form, "pushedToNextWeekendTag")}
                 defaultValue={data.defaults.tags.pushedToNextWeekendTag}
                 onChange={update("pushedToNextWeekendTag")}
+              />
+            </s-stack>
+          </s-section>
+
+          <s-section heading="Product item tags" padding="base">
+            <s-stack direction="block" gap="base">
+              <s-paragraph>
+                Product tags used to decide which line items qualify for
+                Thursday invoices and shipping-paid alerts.
+              </s-paragraph>
+              <TagChipField
+                label="Canada item tag"
+                name="canadaItemTag"
+                value={field(form, "canadaItemTag")}
+                defaultValue={data.defaults.tags.canadaItemTag}
+                onChange={update("canadaItemTag")}
+              />
+              <TagChipField
+                label="Dispatch item tag"
+                name="dispatchItemTag"
+                value={field(form, "dispatchItemTag")}
+                defaultValue={data.defaults.tags.dispatchItemTag}
+                onChange={update("dispatchItemTag")}
+              />
+              <TagChipField
+                label="India item tag"
+                name="indiaItemTag"
+                value={field(form, "indiaItemTag")}
+                defaultValue={data.defaults.tags.indiaItemTag}
+                onChange={update("indiaItemTag")}
               />
             </s-stack>
           </s-section>
