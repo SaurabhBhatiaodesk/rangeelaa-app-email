@@ -23,9 +23,9 @@ export function ShippingPaidAlert({ order, busy, onHold }: Props) {
         </s-paragraph>
         <s-stack direction="inline" gap="small-200" alignItems="center">
           {orderAdminPath ? (
-            <s-link href={orderAdminPath}>
-              <s-button variant="secondary">Ship now (manual)</s-button>
-            </s-link>
+            <s-button variant="secondary" href={orderAdminPath}>
+              Ship now (manual)
+            </s-button>
           ) : (
             <>
               <s-button variant="secondary" disabled>

@@ -59,16 +59,16 @@ export function ShippingManagerMenu({
     <s-section heading="Menu" padding="base">
       <s-stack direction="inline" gap="small" alignItems="center">
         {MENU_ITEMS.map((item) => (
-          <s-link key={item.id} href={item.href}>
-            <s-button
-              variant={active === item.id ? "primary" : "secondary"}
-              accessibilityLabel={`${item.number}. ${item.label}${
-                active === item.id ? " (selected)" : ""
-              }`}
-            >
-              {item.number}. {item.label}
-            </s-button>
-          </s-link>
+          <s-button
+            key={item.id}
+            href={item.href}
+            variant={active === item.id ? "primary" : "secondary"}
+            accessibilityLabel={`${item.number}. ${item.label}${
+              active === item.id ? " (selected)" : ""
+            }`}
+          >
+            {item.number}. {item.label}
+          </s-button>
         ))}
       </s-stack>
     </s-section>
