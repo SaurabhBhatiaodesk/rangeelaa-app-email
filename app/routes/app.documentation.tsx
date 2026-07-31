@@ -209,7 +209,8 @@ export default function DocumentationPage() {
               ready to ship. Pool 2 includes paid, unfulfilled RTW orders
               with at least one physical, non-India item. Saskatoon is
               excluded, shipping country must match Settings, and
-              India-direct orders are excluded.
+              India-direct orders are excluded. The invoice amount is read
+              from the matching Shopify Shipping profile rate.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -348,7 +349,8 @@ export default function DocumentationPage() {
         <s-paragraph>
           Open <s-link href="/app/settings">Settings</s-link> to change the
           India direct order tag. Thursday invoices and shipping-paid alerts
-          now count physical items instead of Canada or dispatch product tags.
+          now count physical items instead of Canada or dispatch product tags;
+          the shipping amount comes from Shopify Shipping profiles.
         </s-paragraph>
       ),
     },

@@ -1,8 +1,5 @@
 import { TAGS, hasTag, normalizeTags } from "./tags";
-import {
-  shippingAmountForItemCount,
-  SHIPPING_CURRENCY,
-} from "./shipping-rates";
+import { resolveShippingRateFromProfiles } from "./shipping-rates";
 import {
   type AdminGraphql,
   type CycleGateTags,
@@ -522,7 +519,12 @@ export async function runThursdayCycle(
     );
     if (itemCount <= 0) continue;
 
-    const shippingAmount = shippingAmountForItemCount(itemCount);
+    const shippingRate = await resolveShippingRateFromProfiles(admin, {
+      countryCode: orders[0]?.shippingCountryCode ?? null,
+      provinceCode: orders[0]?.shippingAddress?.provinceCode ?? null,
+      itemCount,
+    });
+    const shippingAmount = shippingRate.amount;
     const orderNames = orders.map((o) => o.name);
     const customerName =
       orders.find((order) => order.customerName)?.customerName || email;
@@ -530,7 +532,7 @@ export async function runThursdayCycle(
       email,
       orderNames,
       itemCount,
-      shippingAmount: `${shippingAmount} ${SHIPPING_CURRENCY}`,
+      shippingAmount: `${shippingAmount} ${shippingRate.currencyCode}`,
     };
 
     if (dryRun) {
@@ -545,6 +547,8 @@ export async function runThursdayCycle(
         orderNames,
         itemCount,
         shippingAmount,
+        shippingMethodName: shippingRate.methodName,
+        shippingProfileName: shippingRate.profileName,
       });
 
       const draft = await createShippingDraft(

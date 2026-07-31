@@ -1,0 +1,53 @@
+npm warn Unknown project config "shamefully-hoist". This will stop working in the next major version of npm.
+
+> dev:tunnel
+> scripts\dev-local-node22.cmd tunnel
+
+╭─ info ───────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│  Using shopify.app.permanent-access-token.toml for default values:           │
+│                                                                              │
+│    • Org:             Rangeelaa- Fairtrade Sustainable Women's Clothing      │
+│    • App:             Rangeela Shipping Manager                              │
+│    • Dev store:       test-email-store-ojktyeff.myshopify.com                │
+│    • Update URLs:     Yes                                                    │
+│                                                                              │
+│   You can pass `--reset` to your command to reset your app configuration.    │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+Preview URL: https://admin.shopify.com/store/test-email-store-ojktyeff/apps/2051a327000a096d9e4fbeebd27308d9?dev-console=show
+GraphiQL URL (Admin API): http://localhost:3457/graphiql?key=a7f83892cf1b2e15f672072e6f0e508bc0a2707ef0324606ab7682486d489a2c
+Running pre-dev command: "npx prisma generate"Preparing dev preview on test-email-store-ojktyeff.myshopify.comGraphiQL server started on port 3457Proxy server started on port 58861 ✅ Ready, watching for changes in your app │ Access scopes auto-granted: read_customers, read_draft_orders, read_orders, read_products, read_shipping, write_draft_orders, write_metaobject_definitions, write_metaobjects, write_orders, write_products└ Using URL: https://parallel-edward-reasoning-kick.trycloudflare.comEnvironment variables loaded from .env
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "shopify_app", schema "public" at "localhost:5433"
+
+4 migrations found in prisma/migrations
+
+
+No pending migrations to apply.
+[33m  ⚠️  Future Flag Warning: Route middleware support is changing in React Router v8.
+     You can use the `future.v8_middleware` flag to opt in early.
+     -> https://reactrouter.com/v7/upgrading/future#futurev8_middleware[39m
+[33m  ⚠️  Future Flag Warning: Route module splitting behavior is changing in React Router v8.
+     You can use the `future.v8_splitRouteModules` flag to opt in early.
+     -> https://reactrouter.com/v7/upgrading/future#futurev8_splitroutemodules[39m
+[33m  ⚠️  Future Flag Warning: Vite Environment API usage is changing in React Router v8.
+     You can use the `future.v8_viteEnvironmentApi` flag to opt in early.
+     -> https://reactrouter.com/v7/upgrading/future#futurev8_viteenvironmentapi[39m
+[33m  ⚠️  Future Flag Warning: Request handling behavior is changing in React Router v8.
+     You can use the `future.v8_passThroughRequests` flag to opt in early.
+     -> https://reactrouter.com/v7/upgrading/future#futurev8_passthroughrequests[39m
+[33m  ⚠️  Future Flag Warning: Data request URL formats are changing in React Router v8.
+     You can use the `future.v8_trailingSlashAwareDataRequests` flag to opt in early.
+     -> https://reactrouter.com/v7/upgrading/future#futurev8_trailingslashawaredatarequests[39m
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m58866[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[shopify-api/INFO] version 13.1.0, environment React Router
+Received ORDERS_UPDATED webhook for test-email-store-ojktyeff.myshopify.com
+paid invoice detected: gid://shopify/Order/18674548211965
+No linked original orders found on paid invoice: gid://shopify/Order/18674548211965
+[shopify-app/INFO] Authenticating admin request | {shop: test-email-store-ojktyeff.myshopify.com}
+[shopify-app/INFO] Authenticating admin request | {shop: test-email-store-ojktyeff.myshopify.com}

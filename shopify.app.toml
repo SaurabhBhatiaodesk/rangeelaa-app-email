@@ -6,7 +6,7 @@ application_url = "https://rangeelaa-thursday-emails-18ca86a014f2.herokuapp.com"
 embedded = true
 
 [access_scopes]
-scopes = "read_orders,write_orders,write_draft_orders,read_draft_orders,read_customers,read_products,write_products,write_metaobjects,write_metaobject_definitions"
+scopes = "read_orders,write_orders,write_draft_orders,read_draft_orders,read_customers,read_products,write_products,read_shipping,write_metaobjects,write_metaobject_definitions"
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"

@@ -1062,7 +1062,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
                         <s-heading>Expected Result</s-heading>
                         <s-unordered-list>
                           <s-list-item>A new Shopify Draft Order is created.</s-list-item>
-                          <s-list-item>The draft invoice amount is 15.00 CAD for this test case.</s-list-item>
+                          <s-list-item>The draft invoice amount matches the active Shopify shipping profile rate for the shipping address.</s-list-item>
                           <s-list-item>The customer receives the Klaviyo Thursday shipping invoice email.</s-list-item>
                           <s-list-item>The original order receives the tag: <s-text type="strong">thursday-email-sent</s-text>.</s-list-item>
                           <s-list-item>The email displays: customer name, item count, shipping total, working Pay Shipping button, working invoice URL.</s-list-item>

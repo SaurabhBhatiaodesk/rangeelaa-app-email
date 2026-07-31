@@ -14,7 +14,6 @@ import {
   type LineItemInfo,
 } from "../app/lib/cycle-shared.server";
 import { TAGS } from "../app/lib/tags";
-import { shippingAmountForItemCount } from "../app/lib/shipping-rates";
 
 function order(partial: Partial<CycleOrder> & { tags: string[] }): CycleOrder {
   return {
@@ -101,8 +100,5 @@ assert(
   countBillablePhysicalShippingItems([canadaItem, indiaItem, virtualItem]) === 3,
   "count all physical items only",
 );
-
-assert(shippingAmountForItemCount(1) === "15.00", "tier 1");
-assert(shippingAmountForItemCount(2) === "22.00", "tier 2");
 
 console.log("verify-thursday-rules: all assertions passed");

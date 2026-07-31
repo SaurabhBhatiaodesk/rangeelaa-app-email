@@ -378,7 +378,8 @@ export default function SettingsPage() {
             <s-stack direction="block" gap="base">
               <s-paragraph>
                 Choose which shipping countries qualify for Thursday invoices
-                and shipping-paid alerts.
+                and shipping-paid alerts. Shipping amounts are read from
+                Shopify Shipping profiles.
               </s-paragraph>
               <s-text-field
                 label="Allowed shipping country codes"
