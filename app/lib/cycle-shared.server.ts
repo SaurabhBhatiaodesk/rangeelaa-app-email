@@ -11,6 +11,7 @@ export type LineItemInfo = {
   quantity: number;
   title: string;
   productTags: string[];
+  requiresShipping: boolean;
 };
 
 export type CycleOrder = {
@@ -74,6 +75,13 @@ export function hasIndiaItems(
 ): boolean {
   const indiaTag = routingTags.indiaItemTag || "india";
   return lineItems.some((item) => productHasTag(item.productTags, indiaTag));
+}
+
+export function countPhysicalShippingItems(lineItems: LineItemInfo[]): number {
+  return lineItems.reduce((sum, item) => {
+    if (item.requiresShipping === false) return sum;
+    return sum + item.quantity;
+  }, 0);
 }
 
 export function parseAllowedShippingCountryCodes(

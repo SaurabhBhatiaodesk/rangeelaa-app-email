@@ -2,6 +2,7 @@ import {
   hasTag,
   isSkirtDeposit,
   normalizeTags,
+  TAGS,
   type StatusAction,
   type StatusEmailAction,
 } from "./tags";
@@ -11,8 +12,7 @@ import type {
 } from "./klaviyo-settings.server";
 import { sendStatusEmailIfNeeded } from "./send-status-email.server";
 import {
-  countCanadaDispatchItems,
-  hasIndiaItems,
+  countPhysicalShippingItems,
   isAllowedShippingCountry,
   type LineItemInfo,
 } from "./cycle-shared.server";
@@ -58,6 +58,7 @@ const ORDER_NODE_FIELDS = `
       node {
         title
         quantity
+        requiresShipping
         product {
           tags
         }
@@ -117,6 +118,7 @@ async function fetchOrdersByQuery(
       return {
         title: String(line.title || ""),
         quantity: Number(line.quantity || 0),
+        requiresShipping: line.requiresShipping !== false,
         productTags: normalizeTags(product?.tags),
       };
     });
@@ -268,10 +270,8 @@ export async function fetchShippingPaidAlerts(
 
       if (!isAllowedShippingCountry(order, workflowTags)) return false;
 
-      if (countCanadaDispatchItems(order.lineItems, workflowTags) < 1) {
-        return false;
-      }
-      if (hasIndiaItems(order.lineItems, workflowTags)) return false;
+      if (hasTag(order.tags, TAGS.INDIA_DIRECT)) return false;
+      if (countPhysicalShippingItems(order.lineItems) < 1) return false;
 
       return true;
     })

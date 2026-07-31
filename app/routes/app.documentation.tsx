@@ -393,6 +393,10 @@ export default function DocumentationPage() {
 
   return (
     <s-page heading="Documentation" inlineSize="large">
+      <s-link slot="breadcrumb-actions" href="/app">
+        Shipping Manager
+      </s-link>
+
       <s-section heading="Your 5-Step Weekly Workflow" padding="base">
         <s-stack gap="base">
           <s-paragraph>

@@ -141,9 +141,11 @@ export async function sendPreorderStatusEmail(options: {
 export async function sendThursdayInvoiceEmail(options: {
   apiKey: string;
   email: string;
+  customerName: string;
   invoiceUrl: string;
   waitUrl: string;
   orderNames: string[];
+  itemCount: number;
   shippingAmount: string;
   uniqueId?: string;
   templateId: string;
@@ -168,7 +170,10 @@ export async function sendThursdayInvoiceEmail(options: {
     uniqueId: options.uniqueId,
     properties: {
       template_id: templateId,
+      customer_name: options.customerName,
+      item_count: String(options.itemCount),
       invoice_url: options.invoiceUrl,
+      pay_shipping_url: options.invoiceUrl,
       wait_url: options.waitUrl,
       order_names: options.orderNames.join(", "),
       shipping_amount: options.shippingAmount,

@@ -7,6 +7,8 @@ import { getShopSettings } from "./klaviyo-settings.server";
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
+const SIDEKICK_META_NAMESPACE = "sidekick";
+const SIDEKICK_META_DRAFT_KEY = "draft_order_id";
 
 export type FridayResetResult = {
   ok: boolean;
@@ -102,6 +104,11 @@ async function clearThursdayDraftMetafield(
     {
       metafields: [
         { ownerId: orderId, namespace: META_NAMESPACE, key: META_DRAFT_KEY },
+        {
+          ownerId: orderId,
+          namespace: SIDEKICK_META_NAMESPACE,
+          key: SIDEKICK_META_DRAFT_KEY,
+        },
       ],
     },
   );

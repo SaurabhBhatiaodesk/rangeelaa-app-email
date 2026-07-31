@@ -220,6 +220,10 @@ export default function Index() {
       heading="Permanent Access Token"
       inlineSize="large"
     >
+      <s-link slot="breadcrumb-actions" href="/app">
+        Shipping Manager
+      </s-link>
+
       <s-button
         slot="primary-action"
         onClick={handleVerifyAgain}

@@ -377,14 +377,14 @@ export default function SettingsPage() {
           <s-section heading="Shipping eligibility" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
-                Two-letter country codes allowed for Thursday invoices and
-                shipping-paid alerts. Separate multiple countries with commas.
+                Choose which shipping countries qualify for Thursday invoices
+                and shipping-paid alerts.
               </s-paragraph>
               <s-text-field
-                label="Allowed shipping countries"
+                label="Allowed shipping country codes"
                 name="allowedShippingCountryCodes"
                 value={field(form, "allowedShippingCountryCodes")}
-                details={`Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
+                details={`Use 2-letter codes: CA = Canada, US = United States. Separate with commas. Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
                 onChange={update("allowedShippingCountryCodes")}
               />
             </s-stack>

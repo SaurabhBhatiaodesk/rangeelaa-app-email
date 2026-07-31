@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { GraphiQL } from "graphiql";
-import type { Fetcher } from "@graphiql/toolkit";
+import type { Fetcher, SyncExecutionResult } from "@graphiql/toolkit";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import "graphiql/style.css";
 import "./graphql-tester.css";
@@ -13,6 +13,10 @@ type GraphqlPayload = {
   data?: unknown;
   errors?: Array<{ message?: string }>;
 };
+
+function asExecutionResult(payload: GraphqlPayload): SyncExecutionResult {
+  return payload as SyncExecutionResult;
+}
 
 function isIntrospectionQuery(query: string) {
   return (
@@ -81,7 +85,7 @@ export function GraphqlTester({
           }
         }
 
-        return payload;
+        return asExecutionResult(payload);
       } catch {
         if (!skipToast) {
           shopify.toast.show(
@@ -90,14 +94,14 @@ export function GraphqlTester({
           );
         }
 
-        return {
+        return asExecutionResult({
           errors: [
             {
               message:
                 "Unable to run GraphQL request",
             },
           ],
-        };
+        });
       }
     };
   }, [shopify]);

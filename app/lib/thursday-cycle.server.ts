@@ -1,4 +1,4 @@
-import { hasTag, normalizeTags } from "./tags";
+import { TAGS, hasTag, normalizeTags } from "./tags";
 import {
   shippingAmountForItemCount,
   SHIPPING_CURRENCY,
@@ -9,9 +9,8 @@ import {
   type CycleOrder,
   type ItemRoutingTags,
   type LineItemInfo,
-  countCanadaDispatchItems,
+  countPhysicalShippingItems,
   graphqlJson,
-  hasIndiaItems,
   isAllowedShippingCountry,
   isSaskatoon,
   passesCycleTagGate,
@@ -24,6 +23,8 @@ import {
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
+const SIDEKICK_META_NAMESPACE = "sidekick";
+const SIDEKICK_META_DRAFT_KEY = "draft_order_id";
 
 const CYCLE_ORDER_FIELDS = `
   id
@@ -56,6 +57,7 @@ const CYCLE_ORDER_FIELDS = `
       node {
         title
         quantity
+        requiresShipping
         product {
           tags
         }
@@ -84,6 +86,7 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
     return {
       title: String(li.title || ""),
       quantity: Number(li.quantity || 0),
+      requiresShipping: li.requiresShipping !== false,
       productTags: normalizeTags(product?.tags),
     };
   });
@@ -157,14 +160,8 @@ function isPool1Preorder(
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
-  if (
-    hasIndiaItems(order.lineItems, routingTags) &&
-    countCanadaDispatchItems(order.lineItems, routingTags) === 0
-  ) {
-    return false;
-  }
-  // Prefer counting canada/dispatch; if none tagged, count all non-india qty as fallback for pure preorders
-  return true;
+  if (isIndiaDirect(order)) return false;
+  return countPhysicalShippingItems(order.lineItems) > 0;
 }
 
 function isPool2Rtw(
@@ -179,35 +176,19 @@ function isPool2Rtw(
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
-
-  const canadaCount = countCanadaDispatchItems(order.lineItems, routingTags);
-  if (canadaCount < 1) return false;
-
-  // Mixed or india-only excluded
-  if (hasIndiaItems(order.lineItems, routingTags)) return false;
+  if (isIndiaDirect(order)) return false;
+  if (countPhysicalShippingItems(order.lineItems) < 1) return false;
 
   return true;
 }
 
-function billableItemCount(
-  order: CycleOrder,
-  routingTags: ItemRoutingTags,
-): number {
-  const tagged = countCanadaDispatchItems(order.lineItems, routingTags);
-  if (tagged > 0) return tagged;
-  // Preorders may not use canada/dispatch product tags — count non-india units
-  return order.lineItems.reduce((sum, item) => {
-    if (productHasIndia(item.productTags, routingTags)) return sum;
-    return sum + item.quantity;
-  }, 0);
+function billableItemCount(order: CycleOrder): number {
+  if (isIndiaDirect(order)) return 0;
+  return countPhysicalShippingItems(order.lineItems);
 }
 
-function productHasIndia(
-  tags: string[],
-  routingTags: ItemRoutingTags,
-): boolean {
-  const indiaTag = routingTags.indiaItemTag || "india";
-  return tags.some((t) => t.toLowerCase() === indiaTag.toLowerCase());
+function isIndiaDirect(order: CycleOrder): boolean {
+  return hasTag(order.tags, TAGS.INDIA_DIRECT);
 }
 
 export type ThursdayCustomerResult = {
@@ -281,7 +262,7 @@ async function setDraftMetafield(
   orderId: string,
   draftId: string,
 ) {
-  await graphqlJson(
+  const json = await graphqlJson(
     admin,
     `#graphql
       mutation SetThursdayDraftMetafield($metafields: [MetafieldsSetInput!]!) {
@@ -298,9 +279,22 @@ async function setDraftMetafield(
           type: "single_line_text_field",
           value: draftId,
         },
+        {
+          ownerId: orderId,
+          namespace: SIDEKICK_META_NAMESPACE,
+          key: SIDEKICK_META_DRAFT_KEY,
+          type: "single_line_text_field",
+          value: draftId,
+        },
       ],
     },
   );
+  const errors = json.data?.metafieldsSet?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(
+      errors.map((e: { message: string }) => e.message).join(", "),
+    );
+  }
 }
 
 async function createShippingDraft(
@@ -400,6 +394,9 @@ async function createShippingDraft(
   }
 
   const draft = payload.draftOrder;
+  if (!draft?.id) {
+    throw new Error("draftOrderCreate did not return a draft order ID");
+  }
   return {
     id: draft.id,
     name: draft.name,
@@ -484,13 +481,15 @@ export async function runThursdayCycle(
 
   for (const [email, orders] of byEmail) {
     const itemCount = orders.reduce(
-      (sum, order) => sum + billableItemCount(order, workflowTags),
+      (sum, order) => sum + billableItemCount(order),
       0,
     );
     if (itemCount <= 0) continue;
 
     const shippingAmount = shippingAmountForItemCount(itemCount);
     const orderNames = orders.map((o) => o.name);
+    const customerName =
+      orders.find((order) => order.customerName)?.customerName || email;
     const row: ThursdayCustomerResult = {
       email,
       orderNames,
@@ -544,9 +543,11 @@ export async function runThursdayCycle(
       const emailResult = await sendThursdayInvoiceEmail({
         apiKey: klaviyoApiKey,
         email,
+        customerName,
         invoiceUrl: draft.invoiceUrl || "",
         waitUrl,
         orderNames,
+        itemCount,
         shippingAmount: row.shippingAmount,
         uniqueId: `thursday:${draft.id}`,
         templateId: thursdayTemplateId,

@@ -18,6 +18,7 @@ export const TAGS = {
   SHIPPING_PAID: "shipping-paid",
   HOLD_FOR_NEXT_CYCLE: "hold-for-next-cycle",
   PUSHED_TO_NEXT_WEEKEND: "pushed-to-next-weekend",
+  INDIA_DIRECT: "india-direct",
 } as const;
 
 export type StatusAction =

@@ -4,6 +4,7 @@
  */
 import {
   countCanadaDispatchItems,
+  countPhysicalShippingItems,
   hasIndiaItems,
   isAllowedShippingCountry,
   isSaskatoon,
@@ -41,11 +42,19 @@ const canadaItem: LineItemInfo = {
   title: "Dress",
   quantity: 2,
   productTags: ["canada"],
+  requiresShipping: true,
 };
 const indiaItem: LineItemInfo = {
   title: "India piece",
   quantity: 1,
   productTags: ["india"],
+  requiresShipping: true,
+};
+const virtualItem: LineItemInfo = {
+  title: "Digital add-on",
+  quantity: 5,
+  productTags: [],
+  requiresShipping: false,
 };
 
 assert(
@@ -83,6 +92,10 @@ assert(
 assert(countCanadaDispatchItems([canadaItem, indiaItem]) === 2, "count canada only");
 assert(hasIndiaItems([canadaItem, indiaItem]), "detect india");
 assert(!hasIndiaItems([canadaItem]), "no india");
+assert(
+  countPhysicalShippingItems([canadaItem, virtualItem]) === 2,
+  "count physical items only",
+);
 
 assert(shippingAmountForItemCount(1) === "15.00", "tier 1");
 assert(shippingAmountForItemCount(2) === "22.00", "tier 2");
