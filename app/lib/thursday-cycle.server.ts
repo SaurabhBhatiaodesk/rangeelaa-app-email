@@ -9,7 +9,7 @@ import {
   type CycleOrder,
   type ItemRoutingTags,
   type LineItemInfo,
-  countPhysicalShippingItems,
+  countNonIndiaPhysicalShippingItems,
   graphqlJson,
   isAllowedShippingCountry,
   isSaskatoon,
@@ -25,6 +25,7 @@ const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
 const SIDEKICK_META_NAMESPACE = "sidekick";
 const SIDEKICK_META_DRAFT_KEY = "draft_order_id";
+const SIDEKICK_META_THURSDAY_DRAFT_KEY = "thursday_draft_id";
 
 const CYCLE_ORDER_FIELDS = `
   id
@@ -161,7 +162,7 @@ function isPool1Preorder(
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
   if (isIndiaDirect(order)) return false;
-  return countPhysicalShippingItems(order.lineItems) > 0;
+  return countNonIndiaPhysicalShippingItems(order.lineItems, routingTags) > 0;
 }
 
 function isPool2Rtw(
@@ -177,14 +178,19 @@ function isPool2Rtw(
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
   if (isIndiaDirect(order)) return false;
-  if (countPhysicalShippingItems(order.lineItems) < 1) return false;
+  if (countNonIndiaPhysicalShippingItems(order.lineItems, routingTags) < 1) {
+    return false;
+  }
 
   return true;
 }
 
-function billableItemCount(order: CycleOrder): number {
+function billableItemCount(
+  order: CycleOrder,
+  routingTags: ItemRoutingTags,
+): number {
   if (isIndiaDirect(order)) return 0;
-  return countPhysicalShippingItems(order.lineItems);
+  return countNonIndiaPhysicalShippingItems(order.lineItems, routingTags);
 }
 
 function isIndiaDirect(order: CycleOrder): boolean {
@@ -283,6 +289,13 @@ async function setDraftMetafield(
           ownerId: orderId,
           namespace: SIDEKICK_META_NAMESPACE,
           key: SIDEKICK_META_DRAFT_KEY,
+          type: "single_line_text_field",
+          value: draftId,
+        },
+        {
+          ownerId: orderId,
+          namespace: SIDEKICK_META_NAMESPACE,
+          key: SIDEKICK_META_THURSDAY_DRAFT_KEY,
           type: "single_line_text_field",
           value: draftId,
         },
@@ -397,11 +410,37 @@ async function createShippingDraft(
   if (!draft?.id) {
     throw new Error("draftOrderCreate did not return a draft order ID");
   }
+
+  const verifiedDraft = await fetchDraftOrder(admin, draft.id);
+  if (!verifiedDraft?.id) {
+    throw new Error(`Created draft order did not resolve: ${draft.id}`);
+  }
+
   return {
     id: draft.id,
-    name: draft.name,
-    invoiceUrl: draft.invoiceUrl,
+    name: verifiedDraft.name || draft.name,
+    invoiceUrl: verifiedDraft.invoiceUrl || draft.invoiceUrl,
   };
+}
+
+async function fetchDraftOrder(
+  admin: AdminGraphql,
+  draftId: string,
+): Promise<{ id: string; name: string | null; invoiceUrl: string | null } | null> {
+  const json = await graphqlJson(
+    admin,
+    `#graphql
+      query VerifyThursdayDraft($id: ID!) {
+        draftOrder(id: $id) {
+          id
+          name
+          invoiceUrl
+        }
+      }`,
+    { id: draftId },
+  );
+
+  return json.data?.draftOrder ?? null;
 }
 
 /**
@@ -481,7 +520,7 @@ export async function runThursdayCycle(
 
   for (const [email, orders] of byEmail) {
     const itemCount = orders.reduce(
-      (sum, order) => sum + billableItemCount(order),
+      (sum, order) => sum + billableItemCount(order, workflowTags),
       0,
     );
     if (itemCount <= 0) continue;

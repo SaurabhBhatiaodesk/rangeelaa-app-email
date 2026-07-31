@@ -1,4 +1,5 @@
 node_modules
+.tools/
 
 # macOS
 .DS_Store

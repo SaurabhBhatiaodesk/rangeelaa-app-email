@@ -12,7 +12,7 @@ import type {
 } from "./klaviyo-settings.server";
 import { sendStatusEmailIfNeeded } from "./send-status-email.server";
 import {
-  countPhysicalShippingItems,
+  countNonIndiaPhysicalShippingItems,
   isAllowedShippingCountry,
   type LineItemInfo,
 } from "./cycle-shared.server";
@@ -271,7 +271,9 @@ export async function fetchShippingPaidAlerts(
       if (!isAllowedShippingCountry(order, workflowTags)) return false;
 
       if (hasTag(order.tags, TAGS.INDIA_DIRECT)) return false;
-      if (countPhysicalShippingItems(order.lineItems) < 1) return false;
+      if (countNonIndiaPhysicalShippingItems(order.lineItems, workflowTags) < 1) {
+        return false;
+      }
 
       return true;
     })

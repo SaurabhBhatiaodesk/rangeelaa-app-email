@@ -9,6 +9,7 @@ const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
 const SIDEKICK_META_NAMESPACE = "sidekick";
 const SIDEKICK_META_DRAFT_KEY = "draft_order_id";
+const SIDEKICK_META_THURSDAY_DRAFT_KEY = "thursday_draft_id";
 
 export type FridayResetResult = {
   ok: boolean;
@@ -108,6 +109,11 @@ async function clearThursdayDraftMetafield(
           ownerId: orderId,
           namespace: SIDEKICK_META_NAMESPACE,
           key: SIDEKICK_META_DRAFT_KEY,
+        },
+        {
+          ownerId: orderId,
+          namespace: SIDEKICK_META_NAMESPACE,
+          key: SIDEKICK_META_THURSDAY_DRAFT_KEY,
         },
       ],
     },

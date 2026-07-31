@@ -1,4 +1,4 @@
-/** Configurable CAD shipping rates by Canada/dispatch item count. */
+/** Configurable CAD shipping rates by billable physical item count. */
 export function shippingAmountForItemCount(itemCount: number): string {
   const raw = process.env.SHIPPING_RATE_TIERS_JSON;
   // Default tiers — replace via SHIPPING_RATE_TIERS_JSON when client confirms.

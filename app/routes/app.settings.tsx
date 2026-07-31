@@ -344,21 +344,21 @@ export default function SettingsPage() {
             </s-stack>
           </s-section>
 
-          <s-section heading="Product item tags" padding="base">
+          <s-section heading="Legacy product item tags" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
-                Product tags used to decide which line items qualify for
-                Thursday invoices and shipping-paid alerts.
+                India product tags are still used as a legacy exclusion. The
+                Thursday cycle now counts all physical, non-India items.
               </s-paragraph>
               <TagChipField
-                label="Canada item tag"
+                label="Legacy Canada item tag"
                 name="canadaItemTag"
                 value={field(form, "canadaItemTag")}
                 defaultValue={data.defaults.tags.canadaItemTag}
                 onChange={update("canadaItemTag")}
               />
               <TagChipField
-                label="Dispatch item tag"
+                label="Legacy dispatch item tag"
                 name="dispatchItemTag"
                 value={field(form, "dispatchItemTag")}
                 defaultValue={data.defaults.tags.dispatchItemTag}

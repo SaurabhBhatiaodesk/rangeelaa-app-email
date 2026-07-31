@@ -4,6 +4,7 @@
  */
 import {
   countCanadaDispatchItems,
+  countNonIndiaPhysicalShippingItems,
   countPhysicalShippingItems,
   hasIndiaItems,
   isAllowedShippingCountry,
@@ -95,6 +96,10 @@ assert(!hasIndiaItems([canadaItem]), "no india");
 assert(
   countPhysicalShippingItems([canadaItem, virtualItem]) === 2,
   "count physical items only",
+);
+assert(
+  countNonIndiaPhysicalShippingItems([canadaItem, indiaItem, virtualItem]) === 2,
+  "count non-india physical items only",
 );
 
 assert(shippingAmountForItemCount(1) === "15.00", "tier 1");

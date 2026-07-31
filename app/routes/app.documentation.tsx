@@ -207,9 +207,9 @@ export default function DocumentationPage() {
             <s-paragraph>
               Pool 1 includes preorder orders tagged arrived in Canada and
               ready to ship. Pool 2 includes paid, unfulfilled RTW orders
-              with at least one Canada or dispatch product-tagged item.
-              Saskatoon is excluded, shipping country must match Settings, and
-              India-only or mixed India RTW orders are excluded.
+              with at least one physical, non-India item. Saskatoon is
+              excluded, shipping country must match Settings, and
+              India-direct orders are excluded.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -347,9 +347,9 @@ export default function DocumentationPage() {
       content: (
         <s-paragraph>
           Open <s-link href="/app/settings">Settings</s-link> to change the
-          product tags used for Canada, dispatch, and India routing. These
-          tags decide which RTW line items qualify for Thursday invoices and
-          shipping-paid alerts. Defaults are canada, dispatch, and india.
+          legacy India exclusion tag. Thursday invoices and shipping-paid
+          alerts now count physical, non-India items instead of Canada or
+          dispatch product tags.
         </s-paragraph>
       ),
     },
@@ -367,9 +367,8 @@ export default function DocumentationPage() {
           <s-list-item>
             <s-text type="strong">Order not showing in Tab 03
             preview</s-text> — it needs every condition at once (paid,
-            unfulfilled, allowed shipping country, not Saskatoon, and at least one
-            product item tagged with the configured Canada or dispatch tag
-            for RTW orders)
+            unfulfilled, allowed shipping country, not Saskatoon, not
+            india-direct, and at least one physical, non-India item)
           </s-list-item>
           <s-list-item>
             <s-text type="strong">Friday reset shows a red "issue(s)"
@@ -382,9 +381,9 @@ export default function DocumentationPage() {
             + Flows instead
           </s-list-item>
           <s-list-item>
-            <s-text type="strong">Wrong products are qualifying</s-text> - open
-            Settings and check the Product item tags for Canada, dispatch,
-            and India
+            <s-text type="strong">Wrong products are qualifying</s-text> - check
+            whether the order is tagged india-direct or whether legacy India
+            product tags are still present
           </s-list-item>
         </s-unordered-list>
       ),
