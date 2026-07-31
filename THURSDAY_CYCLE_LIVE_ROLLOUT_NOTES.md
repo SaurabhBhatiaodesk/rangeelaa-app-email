@@ -1,4 +1,4 @@
-# Thursday Cycle Live Rollout Notes
+# Thursday Cycle Fixes - Dev Validation and Live Rollout Notes
 
 ## Context
 
@@ -15,7 +15,7 @@ Do not tell the client the live store is fully fixed until the updated app is de
 1. Stored draft ID did not resolve.
 2. Script wrote `rangeela.thursday_draft_id`, while Sidekick reads `sidekick.draft_order_id`.
 3. Draft note was missing `Combined orders: #...`.
-4. Shipping item count needed to stop relying on retired product tags (`india`, `canada`, `dispatch`) and instead count physical/non-virtual items while excluding `india-direct` orders.
+4. Shipping item count needed to stop relying on retired product tags (`india`, `canada`, `dispatch`) and instead count physical items that require shipping while excluding orders tagged `india-direct`.
 
 ## Fixes Implemented
 
@@ -58,12 +58,12 @@ Expected live behavior:
 
 ### 4. Shipping Count and Dynamic Rate
 
-The Thursday cycle now counts physical shipping items and excludes `india-direct` orders.
+The Thursday cycle now counts physical items that require shipping and excludes orders tagged `india-direct`.
 
 Shipping amount is no longer hardcoded in code or `.env`. It is resolved dynamically from Shopify Shipping profiles using:
 
 - destination country/province
-- physical item count
+- physical item count based on items that require shipping
 - Shopify delivery profile method conditions
 
 Safety behavior:
@@ -102,7 +102,7 @@ Before client confirmation, do this on live:
 
 Use a safe test customer/order set.
 
-Verify these four proofs:
+Verify these proof points:
 
 1. Draft invoice is created.
 2. The saved draft ID opens the actual Shopify Draft page.
@@ -110,7 +110,7 @@ Verify these four proofs:
 4. Draft Notes show `Combined orders: #...`.
 5. Shipping amount is a paid dynamic Shopify profile rate, not `$0.00`.
 6. `india-direct` orders do not appear in the Thursday preview.
-7. Normal physical items are counted for the shipping rate.
+7. Normal physical items that require shipping are counted for the shipping rate.
 
 ## Suggested Client Reply After Live Deployment
 
@@ -123,11 +123,10 @@ The updates cover:
 - verifying and storing the actual created draft order ID
 - writing the draft ID to Sidekick's `sidekick.draft_order_id` metafield
 - adding `Combined orders: #...` to the draft Notes field
-- updating the shipping count logic to use physical items and exclude `india-direct` orders
+- updating the shipping count logic to use physical items that require shipping and exclude `india-direct` orders
 - resolving the shipping amount dynamically from Shopify Shipping profiles
 
 We validated the updated behavior on the dev/test store first. After deploying to live, we will run a controlled smoke test and confirm the live proof points: draft link resolves, Sidekick metafield is filled, combined-order note is present, and shipping is calculated from Shopify profiles.
 
 Thanks!
 ```
-

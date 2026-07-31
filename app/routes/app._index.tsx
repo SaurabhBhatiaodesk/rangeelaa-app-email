@@ -1050,7 +1050,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
                               <s-list-item>ready-to-ship</s-list-item>
                             </s-unordered-list>
                           </s-list-item>
-                          <s-list-item>Do NOT add: thursday-email-sent, shipping-paid, pushed-to-next-weekend, hold-for-next-cycle</s-list-item>
+                          <s-list-item>Do NOT add: thursday-email-sent, shipping-paid, pushed-to-next-weekend, hold-for-next-cycle, india-direct</s-list-item>
                           <s-list-item>Open: Shipping Manager → 03. Thursday invoice</s-list-item>
                           <s-list-item>Click: Preview only (no invoices created)</s-list-item>
                           <s-list-item>
@@ -1062,7 +1062,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
                         <s-heading>Expected Result</s-heading>
                         <s-unordered-list>
                           <s-list-item>A new Shopify Draft Order is created.</s-list-item>
-                          <s-list-item>The draft invoice amount matches the active Shopify shipping profile rate for the shipping address.</s-list-item>
+                          <s-list-item>The draft invoice amount matches the active Shopify shipping profile rate for the shipping address and is not $0.00.</s-list-item>
                           <s-list-item>The customer receives the Klaviyo Thursday shipping invoice email.</s-list-item>
                           <s-list-item>The original order receives the tag: <s-text type="strong">thursday-email-sent</s-text>.</s-list-item>
                           <s-list-item>The email displays: customer name, item count, shipping total, working Pay Shipping button, working invoice URL.</s-list-item>

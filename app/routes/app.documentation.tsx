@@ -207,10 +207,10 @@ export default function DocumentationPage() {
             <s-paragraph>
               Pool 1 includes preorder orders tagged arrived in Canada and
               ready to ship. Pool 2 includes paid, unfulfilled RTW orders
-              with at least one physical, non-India item. Saskatoon is
-              excluded, shipping country must match Settings, and
-              India-direct orders are excluded. The invoice amount is read
-              from the matching Shopify Shipping profile rate.
+              with at least one physical item that requires shipping.
+              Saskatoon is excluded, shipping country must match Settings,
+              and orders tagged india-direct are excluded. The invoice
+              amount is read from the matching Shopify Shipping profile rate.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -343,14 +343,15 @@ export default function DocumentationPage() {
     },
     {
       id: "product-item-tags",
-      title: "Product item tags",
+      title: "India direct routing and physical-item count",
       tone: "info",
       content: (
         <s-paragraph>
-          Open <s-link href="/app/settings">Settings</s-link> to change the
+          Open <s-link href="/app/settings">Settings</s-link> to review the
           India direct order tag. Thursday invoices and shipping-paid alerts
-          now count physical items instead of Canada or dispatch product tags;
-          the shipping amount comes from Shopify Shipping profiles.
+          now count physical items that require shipping, instead of Canada,
+          dispatch, or India product tags. The shipping amount comes from
+          Shopify Shipping profiles.
         </s-paragraph>
       ),
     },
@@ -369,7 +370,8 @@ export default function DocumentationPage() {
             <s-text type="strong">Order not showing in Tab 03
             preview</s-text> — it needs every condition at once (paid,
             unfulfilled, allowed shipping country, not Saskatoon, not
-            india-direct, and at least one physical, non-India item)
+            india-direct, and at least one physical item that requires
+            shipping)
           </s-list-item>
           <s-list-item>
             <s-text type="strong">Friday reset shows a red "issue(s)"

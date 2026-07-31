@@ -347,8 +347,10 @@ export default function SettingsPage() {
           <s-section heading="Retired product item tags" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
-                The Thursday cycle now counts all physical items unless the
-                order is tagged for India direct routing.
+                These product tags are legacy references only. The Thursday
+                cycle now counts physical items that require shipping and
+                excludes the whole order when it has the india-direct order
+                tag.
               </s-paragraph>
               <TagChipField
                 label="Legacy Canada item tag"
@@ -365,7 +367,7 @@ export default function SettingsPage() {
                 onChange={update("dispatchItemTag")}
               />
               <TagChipField
-                label="India item tag"
+                label="Legacy India item tag"
                 name="indiaItemTag"
                 value={field(form, "indiaItemTag")}
                 defaultValue={data.defaults.tags.indiaItemTag}
@@ -379,7 +381,7 @@ export default function SettingsPage() {
               <s-paragraph>
                 Choose which shipping countries qualify for Thursday invoices
                 and shipping-paid alerts. Shipping amounts are read from
-                Shopify Shipping profiles.
+                Shopify Shipping profiles, not from a hardcoded price table.
               </s-paragraph>
               <s-text-field
                 label="Allowed shipping country codes"
