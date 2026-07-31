@@ -347,9 +347,8 @@ export default function DocumentationPage() {
       content: (
         <s-paragraph>
           Open <s-link href="/app/settings">Settings</s-link> to change the
-          legacy India exclusion tag. Thursday invoices and shipping-paid
-          alerts now count physical, non-India items instead of Canada or
-          dispatch product tags.
+          India direct order tag. Thursday invoices and shipping-paid alerts
+          now count physical items instead of Canada or dispatch product tags.
         </s-paragraph>
       ),
     },
@@ -382,8 +381,8 @@ export default function DocumentationPage() {
           </s-list-item>
           <s-list-item>
             <s-text type="strong">Wrong products are qualifying</s-text> - check
-            whether the order is tagged india-direct or whether legacy India
-            product tags are still present
+            whether the order is tagged india-direct or whether the item is
+            marked as not requiring shipping
           </s-list-item>
         </s-unordered-list>
       ),

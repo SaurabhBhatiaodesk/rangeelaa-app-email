@@ -3,8 +3,8 @@
  * Run: npx tsx scripts/verify-thursday-rules.ts
  */
 import {
+  countBillablePhysicalShippingItems,
   countCanadaDispatchItems,
-  countNonIndiaPhysicalShippingItems,
   countPhysicalShippingItems,
   hasIndiaItems,
   isAllowedShippingCountry,
@@ -98,8 +98,8 @@ assert(
   "count physical items only",
 );
 assert(
-  countNonIndiaPhysicalShippingItems([canadaItem, indiaItem, virtualItem]) === 2,
-  "count non-india physical items only",
+  countBillablePhysicalShippingItems([canadaItem, indiaItem, virtualItem]) === 3,
+  "count all physical items only",
 );
 
 assert(shippingAmountForItemCount(1) === "15.00", "tier 1");

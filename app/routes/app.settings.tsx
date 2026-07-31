@@ -344,11 +344,11 @@ export default function SettingsPage() {
             </s-stack>
           </s-section>
 
-          <s-section heading="Legacy product item tags" padding="base">
+          <s-section heading="Retired product item tags" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
-                India product tags are still used as a legacy exclusion. The
-                Thursday cycle now counts all physical, non-India items.
+                The Thursday cycle now counts all physical items unless the
+                order is tagged for India direct routing.
               </s-paragraph>
               <TagChipField
                 label="Legacy Canada item tag"

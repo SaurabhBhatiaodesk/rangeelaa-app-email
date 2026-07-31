@@ -9,7 +9,7 @@ import {
   type CycleOrder,
   type ItemRoutingTags,
   type LineItemInfo,
-  countNonIndiaPhysicalShippingItems,
+  countBillablePhysicalShippingItems,
   graphqlJson,
   isAllowedShippingCountry,
   isSaskatoon,
@@ -162,7 +162,7 @@ function isPool1Preorder(
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
   if (isIndiaDirect(order)) return false;
-  return countNonIndiaPhysicalShippingItems(order.lineItems, routingTags) > 0;
+  return countBillablePhysicalShippingItems(order.lineItems) > 0;
 }
 
 function isPool2Rtw(
@@ -178,19 +178,16 @@ function isPool2Rtw(
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
   if (isIndiaDirect(order)) return false;
-  if (countNonIndiaPhysicalShippingItems(order.lineItems, routingTags) < 1) {
+  if (countBillablePhysicalShippingItems(order.lineItems) < 1) {
     return false;
   }
 
   return true;
 }
 
-function billableItemCount(
-  order: CycleOrder,
-  routingTags: ItemRoutingTags,
-): number {
+function billableItemCount(order: CycleOrder): number {
   if (isIndiaDirect(order)) return 0;
-  return countNonIndiaPhysicalShippingItems(order.lineItems, routingTags);
+  return countBillablePhysicalShippingItems(order.lineItems);
 }
 
 function isIndiaDirect(order: CycleOrder): boolean {
@@ -520,7 +517,7 @@ export async function runThursdayCycle(
 
   for (const [email, orders] of byEmail) {
     const itemCount = orders.reduce(
-      (sum, order) => sum + billableItemCount(order, workflowTags),
+      (sum, order) => sum + billableItemCount(order),
       0,
     );
     if (itemCount <= 0) continue;

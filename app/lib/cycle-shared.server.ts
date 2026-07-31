@@ -84,15 +84,11 @@ export function countPhysicalShippingItems(lineItems: LineItemInfo[]): number {
   }, 0);
 }
 
-export function countNonIndiaPhysicalShippingItems(
+export function countBillablePhysicalShippingItems(
   lineItems: LineItemInfo[],
-  routingTags: ItemRoutingTags = {},
 ): number {
-  const indiaTag = routingTags.indiaItemTag || "india";
-
   return lineItems.reduce((sum, item) => {
     if (item.requiresShipping === false) return sum;
-    if (productHasTag(item.productTags, indiaTag)) return sum;
     return sum + item.quantity;
   }, 0);
 }
