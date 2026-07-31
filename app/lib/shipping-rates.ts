@@ -38,7 +38,7 @@ export async function resolveShippingRateFromProfiles(
             node {
               name
               profileLocationGroups {
-                locationGroupZones(first: 50) {
+                locationGroupZones(first: 20) {
                   edges {
                     node {
                       zone {
@@ -52,7 +52,7 @@ export async function resolveShippingRateFromProfiles(
                           }
                         }
                       }
-                      methodDefinitions(first: 20) {
+                      methodDefinitions(first: 10) {
                         edges {
                           node {
                             active
@@ -98,7 +98,7 @@ export async function resolveShippingRateFromProfiles(
           }
         }
       }`,
-    { first: 25 },
+    { first: 10 },
   );
 
   const candidates = collectDeliveryRateCandidates(

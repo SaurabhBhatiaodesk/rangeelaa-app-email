@@ -50,15 +50,12 @@ const CYCLE_ORDER_FIELDS = `
   metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {
     value
   }
-  lineItems(first: 100) {
+  lineItems(first: 25) {
     edges {
       node {
         title
         quantity
         requiresShipping
-        product {
-          tags
-        }
       }
     }
   }
@@ -80,12 +77,11 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
 
   const lineItems: LineItemInfo[] = lineEdges.map((edge) => {
     const li = edge.node;
-    const product = li.product as { tags?: string[] | string } | null;
     return {
       title: String(li.title || ""),
       quantity: Number(li.quantity || 0),
       requiresShipping: li.requiresShipping !== false,
-      productTags: normalizeTags(product?.tags),
+      productTags: [],
     };
   });
 
@@ -124,7 +120,7 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
 async function fetchCycleOrders(
   admin: AdminGraphql,
   query: string,
-  first = 100,
+  first = 75,
 ): Promise<CycleOrder[]> {
   const json = await graphqlJson(
     admin,

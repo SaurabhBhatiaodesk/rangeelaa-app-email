@@ -53,15 +53,12 @@ const ORDER_NODE_FIELDS = `
     city
     countryCodeV2
   }
-  lineItems(first: 100) {
+  lineItems(first: 25) {
     edges {
       node {
         title
         quantity
         requiresShipping
-        product {
-          tags
-        }
       }
     }
   }
@@ -114,12 +111,11 @@ async function fetchOrdersByQuery(
 
     const lineItems: LineItemInfo[] = lineEdges.map((lineEdge) => {
       const line = lineEdge.node;
-      const product = line.product as { tags?: string[] | string } | null;
       return {
         title: String(line.title || ""),
         quantity: Number(line.quantity || 0),
         requiresShipping: line.requiresShipping !== false,
-        productTags: normalizeTags(product?.tags),
+        productTags: [],
       };
     });
 
@@ -172,8 +168,8 @@ export async function fetchAwaitingReadinessOrders(
   ].join(" AND ");
 
   const [awaiting, completed] = await Promise.all([
-    fetchOrdersByQuery(admin, awaitingQuery, 100, skirtDepositTags),
-    fetchOrdersByQuery(admin, completedQuery, 50, skirtDepositTags),
+    fetchOrdersByQuery(admin, awaitingQuery, 75, skirtDepositTags),
+    fetchOrdersByQuery(admin, completedQuery, 40, skirtDepositTags),
   ]);
 
   const awaitingFiltered = awaiting.filter((order) => {
@@ -221,7 +217,7 @@ export async function fetchShippingPaidAlerts(
   const paidOrders = await fetchOrdersByQuery(
     admin,
     `tag:${workflowTags.shippingPaidTag}`,
-    100,
+    75,
     skirtDepositTags,
   );
 
@@ -241,7 +237,7 @@ export async function fetchShippingPaidAlerts(
       `-tag:${workflowTags.holdForNextCycleTag}`,
       `(fulfillment_status:unfulfilled OR fulfillment_status:partial)`,
     ].join(" AND "),
-    100,
+    75,
     skirtDepositTags,
   );
 
