@@ -29,6 +29,10 @@ function userErrorsToMessage(
   return userErrors.map((e) => e.message).join(", ");
 }
 
+function isDraftNotFoundMessage(message: string): boolean {
+  return /draft order not found/i.test(message);
+}
+
 async function deleteDraftOrder(
   admin: AdminGraphql,
   draftId: string,
@@ -45,6 +49,7 @@ async function deleteDraftOrder(
     { input: { id: draftId } },
   );
   const error = userErrorsToMessage(del.data?.draftOrderDelete?.userErrors);
+  if (error && isDraftNotFoundMessage(error)) return { ok: true };
   if (error) return { ok: false, error: `draft delete: ${error}` };
   return { ok: true };
 }
@@ -252,7 +257,6 @@ export async function runFridayReset(
       if (draftId && !deletedDrafts.has(draftId)) {
         const del = await deleteDraftOrder(admin, draftId);
         if (!del.ok) {
-          // Draft may already be gone — record it but continue tagging.
           errors.push(`${order.name}: ${del.error}`);
         } else {
           draftsDeleted += 1;
