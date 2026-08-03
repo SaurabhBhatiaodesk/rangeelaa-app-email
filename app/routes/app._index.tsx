@@ -568,8 +568,9 @@ import { useEffect, useRef, useState, startTransition } from "react";
           <s-banner heading="Could not load data" tone="critical">
             <s-paragraph>{data.loadError}</s-paragraph>
             <s-paragraph>
-              Restart the app with <s-text type="strong">shopify app dev</s-text>{" "}
-              and approve order scopes if prompted.
+              Reopen or reinstall the app and approve the{" "}
+              <s-text type="strong">read_shipping</s-text> permission if
+              prompted.
             </s-paragraph>
           </s-banner>
         )}
