@@ -10,7 +10,7 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router";
-import { useAppBridge } from "@shopify/app-bridge-react";
+import { SaveBar, useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { PreorderStatusButtons } from "../components/PreorderStatusButtons";
@@ -348,9 +348,36 @@ export default function ShippingManagerIndex() {
   const cycleBusy = fetcher.state !== "idle";
   const [manualTestOpen, setManualTestOpen] = useState(false);
   const [thursdayDryRun, setThursdayDryRun] = useState(true);
+  const defaultThursdayRunMode: ThursdayRunMode =
+    data.thursdayAutomationEnabled ? "automatic" : "manual";
+  const thursdayRunModeStorageKey = `rangeelaa:thursdayRunMode:${data.shop}`;
+  const [savedThursdayRunMode, setSavedThursdayRunMode] =
+    useState<ThursdayRunMode>(defaultThursdayRunMode);
   const [thursdayRunMode, setThursdayRunMode] = useState<ThursdayRunMode>(
-    data.thursdayAutomationEnabled ? "automatic" : "manual",
+    defaultThursdayRunMode,
   );
+  const thursdayRunModeDirty = thursdayRunMode !== savedThursdayRunMode;
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(thursdayRunModeStorageKey);
+    if (stored === "automatic" || stored === "manual") {
+      setSavedThursdayRunMode(stored);
+      setThursdayRunMode(stored);
+    } else {
+      setSavedThursdayRunMode(defaultThursdayRunMode);
+      setThursdayRunMode(defaultThursdayRunMode);
+    }
+  }, [defaultThursdayRunMode, thursdayRunModeStorageKey]);
+
+  const saveThursdayRunMode = () => {
+    window.localStorage.setItem(thursdayRunModeStorageKey, thursdayRunMode);
+    setSavedThursdayRunMode(thursdayRunMode);
+    shopify.toast.show("Thursday cycle preference saved.");
+  };
+
+  const discardThursdayRunMode = () => {
+    setThursdayRunMode(savedThursdayRunMode);
+  };
 
   useEffect(() => {
     const freshAlertIds = new Set(data.alerts.map((order) => order.id));
@@ -476,6 +503,13 @@ export default function ShippingManagerIndex() {
 
   return (
     <s-page heading="Rangeela Shipping Manager" inlineSize="large">
+      <SaveBar open={thursdayRunModeDirty}>
+        <button variant="primary" onClick={saveThursdayRunMode}>
+          Save
+        </button>
+        <button onClick={discardThursdayRunMode}>Discard</button>
+      </SaveBar>
+
       <s-box paddingBlockEnd="small-200">
         <s-stack direction="inline" alignItems="center" gap="small-200">
           <s-icon type="wand" tone="info" size="base" />
