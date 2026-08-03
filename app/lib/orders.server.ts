@@ -32,6 +32,12 @@ export type ShippingOrder = {
   needsShippingPaidAlert: boolean;
 };
 
+export type ShippingWorkflowSummary = {
+  readyToShipCount: number;
+  awaitingPaymentCount: number;
+  nextShippingLabel: string;
+};
+
 type AdminGraphql = {
   graphql: (
     query: string,
@@ -200,6 +206,79 @@ export async function fetchAwaitingReadinessOrders(
     if (aDone !== bDone) return aDone - bDone;
     return b.createdAt.localeCompare(a.createdAt);
   });
+}
+
+async function fetchOrderCount(
+  admin: AdminGraphql,
+  query: string,
+): Promise<number> {
+  const response = await admin.graphql(
+    `#graphql
+      query ShippingWorkflowOrderCount($query: String!) {
+        ordersCount(query: $query) {
+          count
+        }
+      }`,
+    { variables: { query } },
+  );
+
+  const json = await response.json();
+  if (json.errors?.length) {
+    const message = json.errors
+      .map((e: { message: string }) => e.message)
+      .join("; ");
+    throw new Error(message);
+  }
+
+  return Number(json.data?.ordersCount?.count ?? 0);
+}
+
+function formatNextShippingLabel(): string {
+  const value =
+    process.env.NEXT_SHIPPING_DATE ||
+    process.env.THURSDAY_NEXT_SHIPPING_DATE ||
+    "";
+  if (!value.trim()) return "Not set";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.trim();
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export async function fetchShippingWorkflowSummary(
+  admin: AdminGraphql,
+  workflowTags: PreorderWorkflowTags,
+): Promise<ShippingWorkflowSummary> {
+  const [readyToShipCount, awaitingPaymentCount] = await Promise.all([
+    fetchOrderCount(
+      admin,
+      [
+        "status:open",
+        `tag:${workflowTags.readyToShipTag}`,
+        `-tag:${workflowTags.shippingPaidTag}`,
+        `-tag:${workflowTags.holdForNextCycleTag}`,
+      ].join(" AND "),
+    ),
+    fetchOrderCount(
+      admin,
+      [
+        "status:open",
+        `tag:${workflowTags.thursdayEmailSentTag}`,
+        `-tag:${workflowTags.shippingPaidTag}`,
+      ].join(" AND "),
+    ),
+  ]);
+
+  return {
+    readyToShipCount,
+    awaitingPaymentCount,
+    nextShippingLabel: formatNextShippingLabel(),
+  };
 }
 
 /**

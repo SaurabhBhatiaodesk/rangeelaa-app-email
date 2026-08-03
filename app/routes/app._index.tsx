@@ -16,10 +16,11 @@ import { useEffect, useRef, useState, startTransition } from "react";
   import { PreorderStatusButtons } from "../components/PreorderStatusButtons";
   import { ShippingPaidAlert } from "../components/ShippingPaidAlert";
   import {
-    applyStatusAction,
-    fetchAwaitingReadinessOrders,
-    fetchShippingPaidAlerts,
-  } from "../lib/orders.server";
+  applyStatusAction,
+  fetchAwaitingReadinessOrders,
+  fetchShippingWorkflowSummary,
+  fetchShippingPaidAlerts,
+} from "../lib/orders.server";
   import {
     previewThursdayPools,
     runThursdayCycle,
@@ -62,9 +63,26 @@ import { useEffect, useRef, useState, startTransition } from "react";
       shopName = session.shop;
     }
 
+    let workflowSummary = {
+      readyToShipCount: 0,
+      awaitingPaymentCount: 0,
+      nextShippingLabel: "Not set",
+    };
+    try {
+      workflowSummary = await fetchShippingWorkflowSummary(
+        admin,
+        shopSettings.preorderTags,
+      );
+    } catch (error) {
+      console.warn("Unable to load shipping workflow summary", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     const base = {
       shop: session.shop,
       shopName,
+      workflowSummary,
       allowedCountryCodesLabel: parseAllowedShippingCountryCodes(
         shopSettings.preorderTags.allowedShippingCountryCodes,
       ).join("/"),
@@ -262,6 +280,18 @@ import { useEffect, useRef, useState, startTransition } from "react";
         detail?: string;
       }>;
     } | null>(null);
+    const [lastThursdayRun, setLastThursdayRun] = useState<{
+      dryRun: boolean;
+      customersProcessed: number;
+      results: Array<{
+        email: string;
+        orderNames: string[];
+        itemCount: number;
+        shippingAmount: string;
+        invoiceUrl?: string;
+        error?: string;
+      }>;
+    } | null>(null);
 
     const [preorderSearch, setPreorderSearch] = useState("");
     const filteredPreorders = (() => {
@@ -314,6 +344,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
     const tab = (searchParams.get("tab") || data.tab || "preorders") as TabId;
     const cycleBusy = fetcher.state !== "idle";
     const [manualTestOpen, setManualTestOpen] = useState(false);
+    const [thursdayDryRun, setThursdayDryRun] = useState(true);
 
     useEffect(() => {
       const freshAlertIds = new Set(data.alerts.map((order) => order.id));
@@ -364,6 +395,19 @@ import { useEffect, useRef, useState, startTransition } from "react";
 
       if ("rows" in fetcher.data && Array.isArray(fetcher.data.rows)) {
         setLastEmailRun({ rows: fetcher.data.rows });
+      }
+
+      if (
+        "dryRun" in fetcher.data &&
+        "customersProcessed" in fetcher.data &&
+        "results" in fetcher.data &&
+        Array.isArray(fetcher.data.results)
+      ) {
+        setLastThursdayRun({
+          dryRun: Boolean(fetcher.data.dryRun),
+          customersProcessed: Number(fetcher.data.customersProcessed || 0),
+          results: fetcher.data.results,
+        });
       }
 
       if ("message" in fetcher.data && fetcher.data.message) {
@@ -425,6 +469,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
     };
 
     const isBusy = (key: string) => busyAction === key && cycleBusy;
+    const thursdayResult = lastThursdayRun ?? data.thursdayPreview;
 
     return (
       <s-page heading="Rangeela Shipping Manager" inlineSize="large">
@@ -562,6 +607,20 @@ import { useEffect, useRef, useState, startTransition } from "react";
               </s-grid>
             </s-box>
           </div>
+        </s-box>
+
+        <s-box paddingBlockEnd="large">
+          <s-stack direction="inline" gap="small" alignItems="center">
+            <s-badge tone="info" color="strong">
+              {data.workflowSummary.readyToShipCount} orders ready to ship
+            </s-badge>
+            <s-badge tone="warning" color="strong">
+              {data.workflowSummary.awaitingPaymentCount} awaiting payment
+            </s-badge>
+            <s-badge tone="neutral">
+              Next shipping: {data.workflowSummary.nextShippingLabel}
+            </s-badge>
+          </s-stack>
         </s-box>
 
         {data.loadError && (
@@ -1095,28 +1154,54 @@ import { useEffect, useRef, useState, startTransition } from "react";
                 ) : null}
               </s-box>
 
-              <s-button-group gap="base" accessibilityLabel="Thursday cycle actions">
-                <s-button
-                  slot="secondary-actions"
-                  variant={
-                    isBusy("thursday_run:preview") ? "primary" : "secondary"
-                  }
-                  disabled={cycleBusy}
-                  {...(isBusy("thursday_run:preview") ? { loading: true } : {})}
-                  onClick={() => runCycle("thursday_run", true)}
-                >
-                  Preview only (no invoices created)
-                </s-button>
-                <s-button
-                  slot="primary-action"
-                  variant="primary"
-                  disabled={cycleBusy}
-                  {...(isBusy("thursday_run:run") ? { loading: true } : {})}
-                  onClick={() => runCycle("thursday_run", false)}
-                >
-                  Run Thursday cycle now
-                </s-button>
-              </s-button-group>
+              <s-box
+                background="base"
+                borderWidth="base"
+                borderStyle="solid"
+                borderColor="subdued"
+                borderRadius="large-100"
+                padding="base"
+              >
+                <s-stack direction="block" gap="base">
+                  <s-stack direction="block" gap="small-200">
+                    <s-text type="strong">Thursday Cycle</s-text>
+                    <s-paragraph>
+                      Use Dry Run to preview the orders that would be processed.
+                      Turn it off to create draft invoices, send emails, and
+                      update orders.
+                    </s-paragraph>
+                  </s-stack>
+
+                  <s-checkbox
+                    label="Dry Run"
+                    checked={thursdayDryRun}
+                    onChange={(event) =>
+                      setThursdayDryRun(event.currentTarget.checked)
+                    }
+                  />
+
+                  <s-paragraph>
+                    {thursdayDryRun
+                      ? "When on, the cycle only previews which orders would be processed. No emails are sent and no invoices are created."
+                      : "When off, the cycle creates draft invoices, sends emails, and updates the matching orders."}
+                  </s-paragraph>
+
+                  <s-button
+                    variant="primary"
+                    disabled={cycleBusy}
+                    {...(isBusy(
+                      `thursday_run:${thursdayDryRun ? "preview" : "run"}`,
+                    )
+                      ? { loading: true }
+                      : {})}
+                    onClick={() => runCycle("thursday_run", thursdayDryRun)}
+                  >
+                    {thursdayDryRun
+                      ? "Run Thursday Cycle (Dry Run)"
+                      : "Run Thursday Cycle"}
+                  </s-button>
+                </s-stack>
+              </s-box>
 
               {!data.thursdayTemplateConfigured && (
                 <s-banner
@@ -1131,7 +1216,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
                 </s-banner>
               )}
 
-              {data.thursdayPreview && (
+              {thursdayResult && (
                 <s-box
                   background="base"
                   borderWidth="base"
@@ -1143,10 +1228,11 @@ import { useEffect, useRef, useState, startTransition } from "react";
                 >
                   <s-box padding="base">
                     <s-text type="strong">
-                      Preview: {data.thursdayPreview.customersProcessed} customer(s)
+                      {thursdayResult.dryRun ? "Preview" : "Last run"}:{" "}
+                      {thursdayResult.customersProcessed} customer(s)
                     </s-text>
                   </s-box>
-                  {data.thursdayPreview.results.length === 0 ? (
+                  {thursdayResult.results.length === 0 ? (
                     <>
                       <s-divider color="base" />
                       <s-box padding="base">
@@ -1164,7 +1250,7 @@ import { useEffect, useRef, useState, startTransition } from "react";
                           <s-table-header listSlot="inline">Shipping</s-table-header>
                         </s-table-header-row>
                         <s-table-body>
-                          {data.thursdayPreview.results.map((row) => (
+                          {thursdayResult.results.map((row) => (
                             <s-table-row key={row.email}>
                               <s-table-cell>
                                 <s-stack
