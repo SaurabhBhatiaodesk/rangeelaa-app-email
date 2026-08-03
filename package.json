@@ -13,7 +13,7 @@
     "env": "shopify app env",
     "start": "react-router-serve ./build/server/index.js",
     "docker-start": "npm run setup && npm run start",
-    "setup": "node scripts/run-prisma-with-ssl.mjs generate && node scripts/run-prisma-with-ssl.mjs migrate deploy",
+    "setup": "node scripts/run-prisma-with-ssl.mjs generate",
     "prisma:migrate": "node scripts/run-prisma-with-ssl.mjs migrate deploy",
     "prisma:generate": "node scripts/run-prisma-with-ssl.mjs generate",
     "db:migrate": "node scripts/run-prisma-with-ssl.mjs migrate deploy",

@@ -28,61 +28,64 @@ export async function resolveShippingRateFromProfiles(
   if (!countryCode) {
     throw new Error("Cannot resolve Shopify shipping rate without shipping country");
   }
-  const json = await graphqlJson(
-    admin,
-    `#graphql
-      query ThursdayShippingRatesFromProfiles($first: Int!) {
-        deliveryProfiles(first: $first, merchantOwnedOnly: true) {
-          edges {
-            node {
-              name
-              profileLocationGroups {
-                locationGroupZones(first: 20) {
-                  edges {
-                    node {
-                      zone {
-                        countries {
-                          code {
-                            countryCode
-                            restOfWorld
-                          }
-                          provinces {
-                            code
+  let json;
+  try {
+    json = await graphqlJson(
+      admin,
+      `#graphql
+        query ThursdayShippingRatesFromProfiles($first: Int!) {
+          deliveryProfiles(first: $first, merchantOwnedOnly: true) {
+            edges {
+              node {
+                name
+                profileLocationGroups {
+                  locationGroupZones(first: 20) {
+                    edges {
+                      node {
+                        zone {
+                          countries {
+                            code {
+                              countryCode
+                              restOfWorld
+                            }
+                            provinces {
+                              code
+                            }
                           }
                         }
-                      }
-                      methodDefinitions(first: 10) {
-                        edges {
-                          node {
-                            active
-                            name
-                            methodConditions {
-                              field
-                              operator
-                              conditionCriteria {
+                        methodDefinitions(first: 10) {
+                          edges {
+                            node {
+                              active
+                              name
+                              methodConditions {
+                                field
+                                operator
+                                conditionCriteria {
+                                  __typename
+                                  ... on MoneyV2 {
+                                    amount
+                                    currencyCode
+                                  }
+                                  ... on Weight {
+                                    value
+                                    unit
+                                  }
+                                }
+                              }
+                              rateProvider {
                                 __typename
-                                ... on MoneyV2 {
-                                  amount
-                                  currencyCode
+                                ... on DeliveryRateDefinition {
+                                  price {
+                                    amount
+                                    currencyCode
+                                  }
                                 }
-                                ... on Weight {
-                                  value
-                                  unit
-                                }
-                              }
-                            }
-                            rateProvider {
-                              __typename
-                              ... on DeliveryRateDefinition {
-                                price {
-                                  amount
-                                  currencyCode
-                                }
-                              }
-                              ... on DeliveryParticipant {
-                                fixedFee {
-                                  amount
-                                  currencyCode
+                                ... on DeliveryParticipant {
+                                  fixedFee {
+                                    amount
+                                    currencyCode
+                                  }
                                 }
                               }
                             }
@@ -95,10 +98,24 @@ export async function resolveShippingRateFromProfiles(
               }
             }
           }
-        }
-      }`,
-    { first: 10 },
-  );
+        }`,
+      { first: 10 },
+    );
+  } catch (error) {
+    if (!isDeliveryProfilesAccessDenied(error)) {
+      throw error;
+    }
+
+    console.warn(
+      "Shopify deliveryProfiles access denied; using configured shipping fallback",
+      {
+        countryCode,
+        provinceCode,
+        itemCount: destination.itemCount,
+      },
+    );
+    return resolveConfiguredFallbackRate(destination.itemCount);
+  }
 
   const candidates = collectDeliveryRateCandidates(
     json.data?.deliveryProfiles?.edges ?? [],
@@ -177,6 +194,42 @@ export async function resolveShippingRateFromProfiles(
     methodName: selected.methodName,
     profileName: selected.profileName,
   };
+}
+
+function resolveConfiguredFallbackRate(itemCount: number): ShippingProfileRate {
+  const base = parseMoneyEnv("SHIPPING_RATE_BASE");
+  const perExtra = parseMoneyEnv("SHIPPING_RATE_PER_EXTRA");
+  const currencyCode = (process.env.SHIPPING_CURRENCY || "CAD").trim() || "CAD";
+
+  const firstItemAmount = base ?? perExtra;
+  if (firstItemAmount === null) {
+    throw new Error(
+      "Access denied for deliveryProfiles field and no fallback shipping rate is configured. Set SHIPPING_RATE_BASE or SHIPPING_RATE_PER_EXTRA.",
+    );
+  }
+
+  const extraItemAmount = perExtra ?? 0;
+  const amount =
+    firstItemAmount + Math.max(0, itemCount - 1) * extraItemAmount;
+
+  return {
+    amount: amount.toFixed(2),
+    currencyCode,
+    methodName: "Configured fallback shipping",
+    profileName: "Fallback shipping rate",
+  };
+}
+
+function parseMoneyEnv(name: string): number | null {
+  const raw = process.env[name]?.trim();
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function isDeliveryProfilesAccessDenied(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /access denied/i.test(message) && /deliveryProfiles/i.test(message);
 }
 
 function collectDeliveryRateCandidates(
