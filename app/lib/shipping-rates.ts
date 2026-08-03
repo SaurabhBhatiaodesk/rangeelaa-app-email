@@ -28,7 +28,6 @@ export async function resolveShippingRateFromProfiles(
   if (!countryCode) {
     throw new Error("Cannot resolve Shopify shipping rate without shipping country");
   }
-
   const json = await graphqlJson(
     admin,
     `#graphql
