@@ -100,9 +100,9 @@ export default function DocumentationPage() {
       content: (
         <s-stack gap="base">
           <s-paragraph>
-            Tracks each preorder through 3 production stages, and
-            automatically emails the customer at every stage — nothing else
-            needs to be clicked.
+            Tracks each preorder through 3 production stages, and automatically
+            emails the customer at every stage — nothing else needs to be
+            clicked.
           </s-paragraph>
           <s-ordered-list>
             <s-list-item>
@@ -110,21 +110,20 @@ export default function DocumentationPage() {
               instantly sends "The saree you chose is now your dress!"
             </s-list-item>
             <s-list-item>
-              <s-text type="strong">Leaving for Canada</s-text> — tags the
-              order and instantly sends "Guess who's flying to Canada?"
+              <s-text type="strong">Leaving for Canada</s-text> — tags the order
+              and instantly sends "Guess who's flying to Canada?"
             </s-list-item>
             <s-list-item>
-              <s-text type="strong">Arrived in Canada</s-text> — tags the
-              order and instantly sends "Guess what just landed in Canada?".
-              The order is now ready for its Thursday shipping invoice.
+              <s-text type="strong">Arrived in Canada</s-text> — tags the order
+              and instantly sends "Guess what just landed in Canada?". The order
+              is now ready for its Thursday shipping invoice.
             </s-list-item>
           </s-ordered-list>
           <s-paragraph>
-            Steps must be done in order — the next button only unlocks once
-            the previous one is done. Skirt deposit orders skip this
-            sequence and get a single{" "}
-            <s-text type="strong">Mark Deposit Fulfilled</s-text> button
-            instead.
+            Steps must be done in order — the next button only unlocks once the
+            previous one is done. Skirt deposit orders skip this sequence and
+            get a single <s-text type="strong">Mark Deposit Fulfilled</s-text>{" "}
+            button instead.
           </s-paragraph>
         </s-stack>
       ),
@@ -138,9 +137,8 @@ export default function DocumentationPage() {
           <s-banner tone="info" heading="Usually nothing to do here">
             <s-paragraph>
               This is a backup and monitoring tab. The 3 emails from Tab 01
-              already send themselves the moment a status button is
-              clicked — you don't need to visit this tab as part of the
-              normal routine.
+              already send themselves the moment a status button is clicked —
+              you don't need to visit this tab as part of the normal routine.
             </s-paragraph>
           </s-banner>
           <s-ordered-list>
@@ -149,21 +147,19 @@ export default function DocumentationPage() {
               shows how many emails are currently pending. Sends nothing.
             </s-list-item>
             <s-list-item>
-              <s-text type="strong">Send pending emails now</s-text> —
-              retries any order where the app has not yet successfully sent
-              its status email (for example, a tag added directly in
-              Shopify Admin instead of through Tab 01, or a one-off send
-              failure).
+              <s-text type="strong">Send pending emails now</s-text> — retries
+              any order where the app has not yet successfully sent its status
+              email (for example, a tag added directly in Shopify Admin instead
+              of through Tab 01, or a one-off send failure).
             </s-list-item>
           </s-ordered-list>
           <s-banner tone="info" heading="Email-sent tag">
             <s-paragraph>
-              The email-sent tag only confirms the app successfully handed
-              the email off to Klaviyo — it does not guarantee the
-              customer's inbox received it. Actual delivery depends on the
-              matching Klaviyo Flow being switched on (Live). If a customer
-              says they never got an email but the tag is present, check
-              that Flow in Klaviyo first.
+              The email-sent tag only confirms the app successfully handed the
+              email off to Klaviyo — it does not guarantee the customer's inbox
+              received it. Actual delivery depends on the matching Klaviyo Flow
+              being switched on (Live). If a customer says they never got an
+              email but the tag is present, check that Flow in Klaviyo first.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -176,41 +172,64 @@ export default function DocumentationPage() {
       content: (
         <s-stack gap="base">
           <s-paragraph>
-            Once a week, this combines everything a customer owes shipping
-            on into <s-text type="strong">one single invoice</s-text> — this
-            is different from the status emails in Tab 01/02, which just
-            update the customer on progress. This tab is the one that asks
-            them to actually pay for shipping.
+            Once a week, this combines everything a customer owes shipping on
+            into <s-text type="strong">one single invoice</s-text> — this is
+            different from the status emails in Tab 01/02, which just update the
+            customer on progress. This tab is the one that asks them to actually
+            pay for shipping.
           </s-paragraph>
           <s-ordered-list>
             <s-list-item>
-              <s-text type="strong">Preview only (no invoices
-              created)</s-text> — shows which customers currently qualify,
-              their combined item count, and the shipping total. Creates
-              nothing.
+              <s-text type="strong">Automatic schedule</s-text> — shows the
+              current Heroku Scheduler status. The scheduler calls the app
+              daily, but the backend only processes orders on Thursday in the
+              configured cron time zone.
             </s-list-item>
             <s-list-item>
-              <s-text type="strong">Run Thursday cycle now</s-text> —
-              actually creates the draft invoice(s) and sends one combined
-              Klaviyo email per customer with a Pay Shipping link.
+              <s-text type="strong">Manual run</s-text> — shows the manual
+              controls for staff. Use this when you need to preview or run the
+              Thursday cycle immediately.
+            </s-list-item>
+            <s-list-item>
+              <s-text type="strong">Dry Run on</s-text> — preview only. It shows
+              which customers would be processed, their combined item count, and
+              the shipping total. No invoices are created and no emails are
+              sent.
+            </s-list-item>
+            <s-list-item>
+              <s-text type="strong">Dry Run off</s-text> — live run. It creates
+              the draft invoice(s), sends one combined Klaviyo email per
+              customer with a Pay Shipping link, and updates the matching
+              orders.
             </s-list-item>
           </s-ordered-list>
-          <s-banner tone="warning" heading="Not automatic">
+          <s-banner tone="info" heading="Automatic or manual mode">
             <s-paragraph>
-              An order becoming "ready" in Tab 01 does not, by itself, send
-              an invoice. Someone has to open this tab and click{" "}
-              <s-text type="strong">Run Thursday cycle now</s-text> (or the
-              weekly scheduled job runs it automatically, if configured).
+              Selecting Automatic schedule or Manual run opens the Shopify Save
+              bar. Click Save to remember that tab preference in this browser,
+              or Discard to go back to the previous selection. The real schedule
+              is still managed in Heroku.
+            </s-paragraph>
+          </s-banner>
+          <s-banner
+            tone="warning"
+            heading="Ready orders do not invoice by themselves"
+          >
+            <s-paragraph>
+              An order becoming "ready" in Tab 01 does not, by itself, send an
+              invoice. It is invoiced by the automatic Thursday scheduler, or by
+              a staff member choosing Manual run and clicking{" "}
+              <s-text type="strong">Run Thursday Cycle</s-text>.
             </s-paragraph>
           </s-banner>
           <s-banner tone="info" heading="What qualifies">
             <s-paragraph>
-              Pool 1 includes preorder orders tagged arrived in Canada and
-              ready to ship. Pool 2 includes paid, unfulfilled RTW orders
-              with at least one physical item that requires shipping.
-              Saskatoon is excluded, shipping country must match Settings,
-              and orders tagged india-direct are excluded. The invoice
-              amount is read from the matching Shopify Shipping profile rate.
+              Pool 1 includes preorder orders tagged arrived in Canada and ready
+              to ship. Pool 2 includes paid, unfulfilled RTW orders with at
+              least one physical item that requires shipping. Saskatoon is
+              excluded, shipping country must match Settings, and orders tagged
+              india-direct are excluded. The invoice amount is read from the
+              matching Shopify Shipping profile rate.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -224,22 +243,21 @@ export default function DocumentationPage() {
         <s-stack gap="base">
           <s-paragraph>
             Alerts staff whenever a customer buys something new{" "}
-            <s-text type="strong">after</s-text> they already paid for
-            shipping on an earlier order — so staff can decide how to
-            handle the new item.
+            <s-text type="strong">after</s-text> they already paid for shipping
+            on an earlier order — so staff can decide how to handle the new
+            item.
           </s-paragraph>
           <s-ordered-list>
             <s-list-item>
               <s-text type="strong">Ship now (manual)</s-text> — opens that
-              exact order in Shopify Admin. Staff fulfils it, adds
-              tracking, and notifies the customer themselves — the app does
-              not touch any tags or send anything automatically here.
+              exact order in Shopify Admin. Staff fulfils it, adds tracking, and
+              notifies the customer themselves — the app does not touch any tags
+              or send anything automatically here.
             </s-list-item>
             <s-list-item>
               <s-text type="strong">Hold for next cycle</s-text> — tags the
-              order so it automatically joins the next Thursday combined
-              invoice (Tab 03) instead, even though shipping was already
-              paid once.
+              order so it automatically joins the next Thursday combined invoice
+              (Tab 03) instead, even though shipping was already paid once.
             </s-list-item>
           </s-ordered-list>
         </s-stack>
@@ -252,29 +270,28 @@ export default function DocumentationPage() {
       content: (
         <s-stack gap="base">
           <s-paragraph>
-            A weekly safety net. Some customers don't pay their Thursday
-            invoice — this resets those orders so they cleanly go through
-            the whole process again next week, with a fresh invoice.
+            A weekly safety net. Some customers don't pay their Thursday invoice
+            — this resets those orders so they cleanly go through the whole
+            process again next week, with a fresh invoice.
           </s-paragraph>
           <s-ordered-list>
             <s-list-item>
-              <s-text type="strong">Preview only (no changes)</s-text> —
-              shows how many unpaid orders would be reset. Changes nothing.
+              <s-text type="strong">Preview only (no changes)</s-text> — shows
+              how many unpaid orders would be reset. Changes nothing.
             </s-list-item>
             <s-list-item>
-              <s-text type="strong">Run Friday backup now</s-text> — cancels
-              the old unpaid invoice and clears its tags, so the order is
-              ready to be picked up by next Thursday's cycle.
+              <s-text type="strong">Run Friday backup now</s-text> — cancels the
+              old unpaid invoice and clears its tags, so the order is ready to
+              be picked up by next Thursday's cycle.
             </s-list-item>
           </s-ordered-list>
           <s-banner tone="info" heading="Backup, not the only path">
             <s-paragraph>
-              This now runs automatically from Heroku Scheduler. The
-              scheduler calls the app daily at 6:00 AM UTC, and the app only
-              performs the reset when it is Friday in the configured cron time
-              zone. Use
-              this button only if the automatic job did not run and unpaid
-              orders are stuck.
+              This now runs automatically from Heroku Scheduler. The scheduler
+              calls the app daily at 6:00 AM UTC, and the app only performs the
+              reset when it is Friday in the configured cron time zone. Use this
+              button only if the automatic job did not run and unpaid orders are
+              stuck.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -297,16 +314,17 @@ export default function DocumentationPage() {
             Tab 02 sits in the background as a backup — usually untouched.
           </s-list-item>
           <s-list-item>
-            Every Thursday, Tab 03 combines that customer's ready orders
-            into one shipping invoice and emails it.
+            On Thursday, Tab 03 combines that customer's ready orders into one
+            shipping invoice and emails it, either from the automatic scheduler
+            or from Manual run.
           </s-list-item>
           <s-list-item>
-            If the same customer buys something new after paying, Tab 04
-            alerts staff to Ship now or Hold it for the next invoice.
+            If the same customer buys something new after paying, Tab 04 alerts
+            staff to Ship now or Hold it for the next invoice.
           </s-list-item>
           <s-list-item>
-            If a Thursday invoice goes unpaid, Tab 05 resets it on Friday so
-            it tries again cleanly the following Thursday.
+            If a Thursday invoice goes unpaid, Tab 05 resets it on Friday so it
+            tries again cleanly the following Thursday.
           </s-list-item>
         </s-ordered-list>
       ),
@@ -335,10 +353,10 @@ export default function DocumentationPage() {
       content: (
         <s-paragraph>
           Open <s-link href="/app/settings">Settings</s-link> to rename any
-          Shopify tag, change button/badge text, connect a Klaviyo API key,
-          or update Klaviyo template IDs — all changes are saved per store.
-          Renaming a tag only affects new activity going forward; it does
-          not rename that tag on orders that already have the old one.
+          Shopify tag, change button/badge text, connect a Klaviyo API key, or
+          update Klaviyo template IDs — all changes are saved per store.
+          Renaming a tag only affects new activity going forward; it does not
+          rename that tag on orders that already have the old one.
         </s-paragraph>
       ),
     },
@@ -349,8 +367,8 @@ export default function DocumentationPage() {
       content: (
         <s-paragraph>
           Open <s-link href="/app/settings">Settings</s-link> to review the
-          India direct order tag. Thursday invoices and shipping-paid alerts
-          now count physical items that require shipping, instead of Canada,
+          India direct order tag. Thursday invoices and shipping-paid alerts now
+          count physical items that require shipping, instead of Canada,
           dispatch, or India product tags. The shipping amount comes from
           Shopify Shipping profiles.
         </s-paragraph>
@@ -364,25 +382,24 @@ export default function DocumentationPage() {
         <s-unordered-list>
           <s-list-item>
             <s-text type="strong">Tag added but no email arrived</s-text> —
-            check the matching Klaviyo Flow is Live, in the Rangeelaa
-            account
+            check the matching Klaviyo Flow is Live, in the Rangeelaa account
           </s-list-item>
           <s-list-item>
-            <s-text type="strong">Order not showing in Tab 03
-            preview</s-text> — it needs every condition at once (paid,
-            unfulfilled, allowed shipping country, not Saskatoon, not
-            india-direct, and at least one physical item that requires
-            shipping)
+            <s-text type="strong">Order not showing in Tab 03 preview</s-text> —
+            it needs every condition at once (paid, unfulfilled, allowed
+            shipping country, not Saskatoon, not india-direct, and at least one
+            physical item that requires shipping)
           </s-list-item>
           <s-list-item>
-            <s-text type="strong">Friday reset shows a red "issue(s)"
-            toast</s-text> — check the listed reason; "draft already gone"
-            is harmless
+            <s-text type="strong">
+              Friday reset shows a red "issue(s)" toast
+            </s-text>{" "}
+            — check the listed reason; "draft already gone" is harmless
           </s-list-item>
           <s-list-item>
             <s-text type="strong">Klaviyo 404 on messages/send</s-text> —
-            expected; that endpoint is retired, the app uses Klaviyo events
-            + Flows instead
+            expected; that endpoint is retired, the app uses Klaviyo events +
+            Flows instead
           </s-list-item>
           <s-list-item>
             <s-text type="strong">Wrong products are qualifying</s-text> - check
@@ -403,9 +420,9 @@ export default function DocumentationPage() {
       <s-section heading="Your 5-Step Weekly Workflow" padding="base">
         <s-stack gap="base">
           <s-paragraph>
-            Rangeela Shipping Manager automates preorder status updates,
-            weekly combined shipping invoices, the "bought again after
-            paying" alert, and the Friday cleanup for unpaid invoices.
+            Rangeela Shipping Manager automates preorder status updates, weekly
+            combined shipping invoices, the "bought again after paying" alert,
+            and the Friday cleanup for unpaid invoices.
           </s-paragraph>
           <DocAccordion items={tabItems} />
         </s-stack>
