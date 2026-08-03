@@ -271,7 +271,8 @@ export default function DocumentationPage() {
             <s-paragraph>
               This now runs automatically from Heroku Scheduler. The
               scheduler calls the app daily at 6:00 AM UTC, and the app only
-              performs the reset when it is Friday in America/Chicago. Use
+              performs the reset when it is Friday in the configured cron time
+              zone. Use
               this button only if the automatic job did not run and unpaid
               orders are stuck.
             </s-paragraph>

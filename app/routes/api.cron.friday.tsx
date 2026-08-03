@@ -1,17 +1,10 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { authenticateCron } from "../lib/cron-auth.server";
+import {
+  getCronTimeZone,
+  isWeekdayInCronTimeZone,
+} from "../lib/cron-schedule.server";
 import { runFridayReset } from "../lib/friday-reset.server";
-
-const FRIDAY_RESET_TIME_ZONE = "America/Chicago";
-
-function isFridayInChicago(date = new Date()): boolean {
-  const weekday = new Intl.DateTimeFormat("en-US", {
-    timeZone: FRIDAY_RESET_TIME_ZONE,
-    weekday: "short",
-  }).format(date);
-
-  return weekday === "Fri";
-}
 
 async function handle(request: Request) {
   const auth = await authenticateCron(request);
@@ -25,12 +18,15 @@ async function handle(request: Request) {
     url.searchParams.get("dry_run") === "1";
   const force = url.searchParams.get("force") === "1";
 
-  if (!force && !isFridayInChicago()) {
+  const timeZone = getCronTimeZone();
+
+  if (!force && !isWeekdayInCronTimeZone("Fri")) {
     return Response.json({
       ok: true,
       dryRun,
       skipped: true,
-      message: "Friday reset skipped: today is not Friday in America/Chicago",
+      timeZone,
+      message: `Friday reset skipped: today is not Friday in ${timeZone}`,
     });
   }
 

@@ -1,5 +1,9 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { authenticateCron } from "../lib/cron-auth.server";
+import {
+  getCronTimeZone,
+  isWeekdayInCronTimeZone,
+} from "../lib/cron-schedule.server";
 import { runThursdayCycle } from "../lib/thursday-cycle.server";
 
 async function handle(request: Request) {
@@ -12,6 +16,19 @@ async function handle(request: Request) {
   const dryRun =
     url.searchParams.get("dryRun") === "1" ||
     url.searchParams.get("dry_run") === "1";
+  const force = url.searchParams.get("force") === "1";
+
+  const timeZone = getCronTimeZone();
+
+  if (!force && !isWeekdayInCronTimeZone("Thu")) {
+    return Response.json({
+      ok: true,
+      dryRun,
+      skipped: true,
+      timeZone,
+      message: `Thursday cycle skipped: today is not Thursday in ${timeZone}`,
+    });
+  }
 
   const result = await runThursdayCycle(auth.admin, {
     dryRun,
