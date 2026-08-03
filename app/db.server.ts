@@ -1,5 +1,9 @@
 import { PrismaClient } from "@prisma/client";
 
+import { ensurePrismaSslMode } from "./lib/database-url.server";
+
+process.env.DATABASE_URL = ensurePrismaSslMode(process.env.DATABASE_URL);
+
 declare global {
   // eslint-disable-next-line no-var
   var prismaGlobal: PrismaClient;
