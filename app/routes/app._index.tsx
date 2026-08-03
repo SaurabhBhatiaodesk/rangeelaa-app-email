@@ -348,8 +348,9 @@ export default function ShippingManagerIndex() {
   const cycleBusy = fetcher.state !== "idle";
   const [manualTestOpen, setManualTestOpen] = useState(false);
   const [thursdayDryRun, setThursdayDryRun] = useState(true);
-  const defaultThursdayRunMode: ThursdayRunMode =
-    data.thursdayAutomationEnabled ? "automatic" : "manual";
+  const defaultThursdayRunMode: ThursdayRunMode = data.thursdayAutomationEnabled
+    ? "automatic"
+    : "manual";
   const thursdayRunModeStorageKey = `rangeelaa:thursdayRunMode:${data.shop}`;
   const [savedThursdayRunMode, setSavedThursdayRunMode] =
     useState<ThursdayRunMode>(defaultThursdayRunMode);
@@ -1205,15 +1206,20 @@ export default function ShippingManagerIndex() {
                           Open: Shipping Manager → 03. Thursday invoice
                         </s-list-item>
                         <s-list-item>
-                          Click: Preview only (no invoices created)
+                          Select: Manual run. If the Shopify Save bar appears,
+                          click Save.
+                        </s-list-item>
+                        <s-list-item>
+                          Keep Dry Run on, then click: Run Thursday Cycle (Dry
+                          Run)
                         </s-list-item>
                         <s-list-item>
                           Confirm Preview shows: 1 customer, customer email,
                           order number, item count, shipping amount
                         </s-list-item>
                         <s-list-item>
-                          If Preview shows 1 customer, click: Run Thursday cycle
-                          now
+                          If Preview shows 1 customer, turn Dry Run off and
+                          click: Run Thursday Cycle
                         </s-list-item>
                       </s-unordered-list>
 
