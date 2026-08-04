@@ -1,3 +1,4 @@
+/* eslint-disable react/no-unescaped-entities */
 import { useEffect, useRef, useState, startTransition } from "react";
 import type {
   ActionFunctionArgs,
@@ -29,14 +30,26 @@ import { parseAllowedShippingCountryCodes } from "../lib/cycle-shared.server";
 import { getCronTimeZone } from "../lib/cron-schedule.server";
 import { runFridayReset } from "../lib/friday-reset.server";
 import { runStatusEmailPoller } from "../lib/status-emails.server";
-import type { StatusAction } from "../lib/tags";
-import { hasTag } from "../lib/tags";
+import {
+  hasTag,
+  KLAVIYO_STATUS_EMAIL_META,
+  type StatusAction,
+} from "../lib/tags";
 import { authenticate } from "../shopify.server";
 import { getShopSettings } from "../lib/klaviyo-settings.server";
-import { KLAVIYO_STATUS_EMAIL_META } from "../lib/tags";
 
 type TabId = "preorders" | "emails" | "thursday" | "alerts" | "friday";
 type ThursdayRunMode = "automatic" | "manual";
+type SessionWithUser = { user?: { id?: string | number } };
+type FetcherResultWithRows = {
+  rows?: Array<{
+    orderName: string;
+    job: string;
+    result: string;
+    detail?: string;
+  }>;
+  results?: Array<{ error?: string }>;
+};
 
 const ALERT_HIDE_ACTIONS = ["hold_for_next_cycle"] as const;
 
@@ -170,7 +183,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     formKeys: Array.from(formData.keys()),
   };
   if (typeof session === "object" && session !== null && "user" in session) {
-    actionLog.userId = (session as any).user?.id;
+    actionLog.userId = (session as SessionWithUser).user?.id;
   }
   console.log("App action received", actionLog);
 
@@ -461,15 +474,16 @@ export default function ShippingManagerIndex() {
     } else if ("error" in fetcher.data && fetcher.data.error) {
       shopify.toast.show(String(fetcher.data.error), { isError: true });
     } else if ("ok" in fetcher.data && fetcher.data.ok === false) {
-      const rowError = Array.isArray((fetcher.data as any).results)
-        ? (fetcher.data as any).results.find((r: any) => r?.error)?.error
+      const resultRows = (fetcher.data as FetcherResultWithRows).results;
+      const rowError = Array.isArray(resultRows)
+        ? resultRows.find((r) => r?.error)?.error
         : undefined;
       shopify.toast.show(
         String(rowError ?? "Thursday cycle failed. Check details."),
         { isError: true },
       );
     }
-  }, [fetcher.state, fetcher.data, shopify, busyAction]);
+  }, [fetcher.state, fetcher.data, shopify, busyAction, navigate]);
 
   const setTab = (next: TabId) => {
     startTransition(() => {

@@ -59,7 +59,7 @@ const ORDER_NODE_FIELDS = `
     city
     countryCodeV2
   }
-  lineItems(first: 25) {
+  lineItems(first: 250) {
     edges {
       node {
         title

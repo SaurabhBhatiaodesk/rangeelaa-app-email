@@ -80,7 +80,10 @@
     "@shopify/plugin-cloudflare"
   ],
   "overrides": {
-    "p-map": "^4.0.0"
+    "p-map": "^4.0.0",
+    "string.prototype.repeat": {
+      "es-abstract": "1.23.9"
+    }
   },
   "author": "b2b"
 }

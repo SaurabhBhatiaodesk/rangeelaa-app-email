@@ -50,7 +50,7 @@ const CYCLE_ORDER_FIELDS = `
   metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {
     value
   }
-  lineItems(first: 25) {
+  lineItems(first: 250) {
     edges {
       node {
         title

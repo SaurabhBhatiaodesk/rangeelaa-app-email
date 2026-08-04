@@ -4,6 +4,31 @@ import { hasTag, normalizeTags } from "./tags";
 import { voidThursdayDraftForOrder } from "./friday-reset.server";
 import { getShopSettings } from "./klaviyo-settings.server";
 
+type WebhookNoteAttribute = {
+  name?: string;
+  value?: unknown;
+};
+
+type OrderWebhookPayload = {
+  id?: string | number;
+  admin_graphql_api_id?: string;
+  financial_status?: string;
+  note_attributes?: WebhookNoteAttribute[];
+  note?: string | null;
+  tags?: string[] | string;
+};
+
+type OrderTagsResponse = {
+  data?: {
+    order?: {
+      tags?: string[] | string;
+    } | null;
+    orderUpdate?: {
+      userErrors?: Array<{ field?: string[]; message: string }>;
+    };
+  };
+};
+
 function parseLinkedOrderIds(value: unknown): string[] {
   if (typeof value !== "string") return [];
   const trimmed = value.trim();
@@ -30,7 +55,9 @@ function parseLinkedOrderIds(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function extractLinkedOrderIdsFromPayload(orderPayload: any): string[] {
+function extractLinkedOrderIdsFromPayload(
+  orderPayload: OrderWebhookPayload,
+): string[] {
   const ids = new Set<string>();
 
   if (Array.isArray(orderPayload?.note_attributes)) {
@@ -86,7 +113,7 @@ function normalizeOrderGid(id: string): string | null {
 
 export async function processShippingPaidTagging(
   admin: AdminGraphql,
-  orderPayload: any,
+  orderPayload: OrderWebhookPayload,
   shop: string,
 ) {
   const invoiceId =
@@ -123,7 +150,7 @@ export async function processShippingPaidTagging(
     }
 
     try {
-      const fetchRes: any = await graphqlJson(
+      const fetchRes = (await graphqlJson(
         admin,
         `#graphql
           query GetOrderTags($id: ID!) {
@@ -134,12 +161,9 @@ export async function processShippingPaidTagging(
           }
         `,
         { id: linkedOrderGid },
-      );
+      )) as OrderTagsResponse;
 
-      const existingTags =
-        fetchRes?.data?.order?.tags ??
-        fetchRes?.body?.data?.order?.tags ??
-        [];
+      const existingTags = fetchRes.data?.order?.tags ?? [];
       const tagsArray = Array.isArray(existingTags)
         ? existingTags
         : String(existingTags || "")
@@ -162,7 +186,7 @@ export async function processShippingPaidTagging(
         new Set([...tagsArray, shippingPaidTag]),
       ).join(", ");
 
-      const updateRes: any = await graphqlJson(
+      const updateRes = (await graphqlJson(
         admin,
         `#graphql
           mutation OrderUpdate($input: OrderInput!) {
@@ -178,11 +202,9 @@ export async function processShippingPaidTagging(
             tags: updatedTags,
           },
         },
-      );
+      )) as OrderTagsResponse;
 
-      const userErrors =
-        updateRes?.data?.orderUpdate?.userErrors ??
-        updateRes?.body?.data?.orderUpdate?.userErrors;
+      const userErrors = updateRes.data?.orderUpdate?.userErrors;
       if (Array.isArray(userErrors) && userErrors.length > 0) {
         console.error("Failed to add shipping-paid tag to order", linkedId, userErrors);
       } else {
@@ -202,7 +224,7 @@ export async function processShippingPaidTagging(
  */
 export async function processPushedToNextWeekendVoid(
   admin: AdminGraphql,
-  orderPayload: any,
+  orderPayload: OrderWebhookPayload,
   shop: string,
 ) {
   const settings = await getShopSettings(shop);
