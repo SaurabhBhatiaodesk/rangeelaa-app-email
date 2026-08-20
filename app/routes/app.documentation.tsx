@@ -118,18 +118,29 @@ export default function DocumentationPage() {
           <s-ordered-list>
             <s-list-item>
               <s-text type="strong">Piece Made</s-text> — tags the order and
-              instantly sends "The saree you chose is now your dress!"
+              instantly sends the Piece Made email only when this button is
+              clicked.
             </s-list-item>
             <s-list-item>
               <s-text type="strong">Leaving for Canada</s-text> — tags the order
-              and instantly sends "Guess who's flying to Canada?"
+              and instantly sends the Leaving for Canada email only when this
+              button is clicked.
             </s-list-item>
             <s-list-item>
               <s-text type="strong">Arrived in Canada</s-text> — tags the order
-              and instantly sends "Guess what just landed in Canada?". The order
-              is now ready for its Thursday shipping invoice.
+              and instantly sends the Arrived in Canada email only when this
+              button is clicked. The order is now ready for its Thursday
+              shipping invoice.
             </s-list-item>
           </s-ordered-list>
+          <s-banner tone="success" heading="Emails send from button clicks">
+            <s-paragraph>
+              The customer email is triggered by clicking the matching status
+              button: Piece Made, Leaving for Canada, or Arrived in Canada. Once
+              a step is already complete, it shows as a colored badge and does
+              not send the email again.
+            </s-paragraph>
+          </s-banner>
           <s-paragraph>
             Steps must be done in order — the next button only unlocks once the
             previous one is done. Skirt deposit orders skip this sequence and

@@ -153,14 +153,17 @@ function TagChipField({
         />
       ) : (
         <>
-          <s-clickable
-            onClick={() => setEditing(true)}
-            accessibilityLabel={`Edit ${label}`}
-          >
-            <s-badge tone={value ? "info" : "neutral"} color="strong">
-              {value || defaultValue}
-            </s-badge>
-          </s-clickable>
+        <s-clickable
+          onClick={() => setEditing(true)}
+          accessibilityLabel={`Edit ${label}`}
+        >
+            <s-stack direction="inline" gap="small-200" alignItems="center">
+              <s-badge tone={value ? "info" : "neutral"} color="strong">
+                {value || defaultValue}
+              </s-badge>
+              <s-icon type="edit" tone="subdued" size="small" />
+            </s-stack>
+        </s-clickable>
           <input type="hidden" name={name} value={value} />
         </>
       )}
