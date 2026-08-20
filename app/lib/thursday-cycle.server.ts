@@ -17,6 +17,7 @@ import {
   getShopSettings,
   type PreorderWorkflowTags,
 } from "./klaviyo-settings.server";
+import { hasConfiguredProductTag } from "./product-eligibility.server";
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
@@ -56,6 +57,9 @@ const CYCLE_ORDER_FIELDS = `
         title
         quantity
         requiresShipping
+        product {
+          tags
+        }
       }
     }
   }
@@ -77,11 +81,12 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
 
   const lineItems: LineItemInfo[] = lineEdges.map((edge) => {
     const li = edge.node;
+    const product = li.product as { tags?: string[] | string } | null;
     return {
       title: String(li.title || ""),
       quantity: Number(li.quantity || 0),
       requiresShipping: li.requiresShipping !== false,
-      productTags: [],
+      productTags: normalizeTags(product?.tags),
     };
   });
 
@@ -146,9 +151,11 @@ function isPool1Preorder(
   order: CycleOrder,
   arrivedInCanadaTag: string,
   readyToShipTag: string,
+  preorderProductTag: string,
   gateTags: CycleGateTags,
   routingTags: ItemRoutingTags,
 ): boolean {
+  if (!hasPreorderProductTag(order, preorderProductTag)) return false;
   if (!hasTag(order.tags, arrivedInCanadaTag)) return false;
   if (!hasTag(order.tags, readyToShipTag)) return false;
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
@@ -160,9 +167,11 @@ function isPool1Preorder(
 
 function isPool2Rtw(
   order: CycleOrder,
+  preorderProductTag: string,
   gateTags: CycleGateTags,
   routingTags: ItemRoutingTags,
 ): boolean {
+  if (!hasPreorderProductTag(order, preorderProductTag)) return false;
   const financial = (order.displayFinancialStatus || "").toUpperCase();
   const fulfillment = (order.displayFulfillmentStatus || "").toUpperCase();
   if (financial !== "PAID") return false;
@@ -181,6 +190,13 @@ function isPool2Rtw(
 function billableItemCount(order: CycleOrder): number {
   if (isIndiaDirect(order)) return 0;
   return countBillablePhysicalShippingItems(order.lineItems);
+}
+
+function hasPreorderProductTag(
+  order: CycleOrder,
+  preorderProductTag: string,
+): boolean {
+  return hasConfiguredProductTag(order, preorderProductTag);
 }
 
 function isIndiaDirect(order: CycleOrder): boolean {
@@ -433,6 +449,37 @@ async function fetchDraftOrder(
   return json.data?.draftOrder ?? null;
 }
 
+async function resolveExistingDraftForOrders(
+  admin: AdminGraphql,
+  orders: CycleOrder[],
+): Promise<{ id: string; invoiceUrl: string | null; name: string } | null> {
+  const linkedDraftIds = Array.from(
+    new Set(orders.map((order) => order.thursdayDraftId).filter(Boolean)),
+  ) as string[];
+
+  if (linkedDraftIds.length === 0) return null;
+
+  if (linkedDraftIds.length > 1) {
+    throw new Error(
+      `Orders are already linked to multiple Thursday drafts: ${linkedDraftIds.join(", ")}`,
+    );
+  }
+
+  const draftId = linkedDraftIds[0]!;
+  const draft = await fetchDraftOrder(admin, draftId);
+  if (!draft?.id) {
+    throw new Error(
+      `Order is already linked to Thursday draft ${draftId}, but the draft could not be found. Clear the draft metafield or run Friday reset before creating a new one.`,
+    );
+  }
+
+  return {
+    id: draft.id,
+    name: draft.name || draft.id,
+    invoiceUrl: draft.invoiceUrl,
+  };
+}
+
 /**
  * Thursday cycle: pool preorders + RTW, combine by email, create one draft invoice,
  * email via Klaviyo, tag originals thursday-email-sent, clear hold/pushed tags.
@@ -477,12 +524,13 @@ export async function runThursdayCycle(
       order,
       arrivedInCanadaTag,
       workflowTags.readyToShipTag,
+      workflowTags.preorderProductTag,
       gateTags,
       workflowTags,
     ),
   );
   const pool2 = pool2Raw.filter((order) =>
-    isPool2Rtw(order, gateTags, workflowTags),
+    isPool2Rtw(order, workflowTags.preorderProductTag, gateTags, workflowTags),
   );
 
   const byId = new Map<string, CycleOrder>();
@@ -547,21 +595,38 @@ export async function runThursdayCycle(
         shippingProfileName: shippingRate.profileName,
       });
 
-      const draft = await createShippingDraft(
-        admin,
-        orders,
-        email,
-        shippingAmount,
-        orders.map((o) => o.id),
-      );
-      console.log("Thursday createShippingDraft succeeded", {
-        email,
-        draftId: draft.id,
-        invoiceUrl: draft.invoiceUrl,
-        draftName: draft.name,
-      });
+      let draft = await resolveExistingDraftForOrders(admin, orders);
+      if (draft) {
+        console.log("Thursday cycle reusing existing draft", {
+          email,
+          draftId: draft.id,
+          invoiceUrl: draft.invoiceUrl,
+          draftName: draft.name,
+        });
+      } else {
+        draft = await createShippingDraft(
+          admin,
+          orders,
+          email,
+          shippingAmount,
+          orders.map((o) => o.id),
+        );
+        console.log("Thursday createShippingDraft succeeded", {
+          email,
+          draftId: draft.id,
+          invoiceUrl: draft.invoiceUrl,
+          draftName: draft.name,
+        });
+      }
+
       row.draftOrderId = draft.id;
       row.invoiceUrl = draft.invoiceUrl || undefined;
+
+      for (const order of orders) {
+        if (order.thursdayDraftId !== draft.id) {
+          await setDraftMetafield(admin, order.id, draft.id);
+        }
+      }
 
       const waitUrl =
         process.env.THURSDAY_WAIT_URL ||
@@ -611,7 +676,6 @@ export async function runThursdayCycle(
 
       for (const order of orders) {
         await addTags(admin, order.id, [workflowTags.thursdayEmailSentTag]);
-        await setDraftMetafield(admin, order.id, draft.id);
 
         const toRemove: string[] = [];
         if (hasTag(order.tags, workflowTags.pushedToNextWeekendTag)) {

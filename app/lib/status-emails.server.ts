@@ -10,6 +10,7 @@ import {
   type AdminGraphql,
   graphqlJson,
 } from "./cycle-shared.server";
+import { hasConfiguredProductTag } from "./product-eligibility.server";
 
 /**
  * Client Task 1 — Heroku poller (NOT Shopify Flow).
@@ -70,6 +71,7 @@ async function fetchOrdersNeedingEmail(
   admin: AdminGraphql,
   statusTag: string,
   sentTag: string,
+  preorderProductTag: string,
 ) {
   const query = `tag:${statusTag} AND -tag:${sentTag}`;
   const json = await graphqlJson(
@@ -83,6 +85,15 @@ async function fetchOrdersNeedingEmail(
               name
               email
               tags
+              lineItems(first: 250) {
+                edges {
+                  node {
+                    product {
+                      tags
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -97,13 +108,26 @@ async function fetchOrdersNeedingEmail(
         name: string;
         email: string | null;
         tags: string[] | string;
+        lineItems?: {
+          edges?: Array<{
+            node?: { product?: { tags?: string[] | string } | null };
+          }>;
+        };
       };
-    }) => ({
-      id: edge.node.id,
-      name: edge.node.name,
-      email: edge.node.email,
-      tags: normalizeTags(edge.node.tags),
-    }),
+    }) => {
+      const lineEdges = edge.node.lineItems?.edges ?? [];
+      return {
+        id: edge.node.id,
+        name: edge.node.name,
+        email: edge.node.email,
+        tags: normalizeTags(edge.node.tags),
+        lineItems: lineEdges.map((lineEdge) => ({
+          productTags: normalizeTags(lineEdge.node?.product?.tags),
+        })),
+      };
+    },
+  ).filter((order: { lineItems: Array<{ productTags: string[] }> }) =>
+    hasConfiguredProductTag(order, preorderProductTag),
   );
 }
 
@@ -130,7 +154,12 @@ export async function runStatusEmailPoller(
       job.statusAction,
     );
 
-    const orders = await fetchOrdersNeedingEmail(admin, statusTag, sentTag);
+    const orders = await fetchOrdersNeedingEmail(
+      admin,
+      statusTag,
+      sentTag,
+      settings.preorderTags.preorderProductTag,
+    );
 
     for (const order of orders) {
       checked += 1;

@@ -3,6 +3,7 @@ import { graphqlJson } from "./cycle-shared.server";
 import { hasTag, normalizeTags } from "./tags";
 import { voidThursdayDraftForOrder } from "./friday-reset.server";
 import { getShopSettings } from "./klaviyo-settings.server";
+import { orderHasConfiguredProductTag } from "./product-eligibility.server";
 
 type WebhookNoteAttribute = {
   name?: string;
@@ -129,6 +130,7 @@ export async function processShippingPaidTagging(
 
   const settings = await getShopSettings(shop);
   const shippingPaidTag = settings.preorderTags.shippingPaidTag;
+  const preorderProductTag = settings.preorderTags.preorderProductTag;
 
   const linkedOrderIds = extractLinkedOrderIdsFromPayload(orderPayload);
   if (linkedOrderIds.length === 0) {
@@ -150,6 +152,18 @@ export async function processShippingPaidTagging(
     }
 
     try {
+      const eligible = await orderHasConfiguredProductTag(
+        admin,
+        linkedOrderGid,
+        preorderProductTag,
+      );
+      if (!eligible) {
+        console.log(
+          `skipped tagging order ${linkedId} (missing product tag ${preorderProductTag})`,
+        );
+        continue;
+      }
+
       const fetchRes = (await graphqlJson(
         admin,
         `#graphql
@@ -242,6 +256,19 @@ export async function processPushedToNextWeekendVoid(
   }
 
   try {
+    const eligible = await orderHasConfiguredProductTag(
+      admin,
+      orderGid,
+      settings.preorderTags.preorderProductTag,
+    );
+    if (!eligible) {
+      console.log(
+        "pushed-to-next-weekend void skipped; missing configured product tag",
+        orderGid,
+      );
+      return;
+    }
+
     const result = await voidThursdayDraftForOrder(admin, orderGid);
     if (!result.ok) {
       console.error(

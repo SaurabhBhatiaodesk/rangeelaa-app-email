@@ -4,6 +4,7 @@ import {
   graphqlJson,
 } from "./cycle-shared.server";
 import { getShopSettings } from "./klaviyo-settings.server";
+import { hasConfiguredProductTag } from "./product-eligibility.server";
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
@@ -208,6 +209,7 @@ export async function runFridayReset(
   const thursdayEmailSentTag = settings.preorderTags.thursdayEmailSentTag;
   const shippingPaidTag = settings.preorderTags.shippingPaidTag;
   const pushedToNextWeekendTag = settings.preorderTags.pushedToNextWeekendTag;
+  const preorderProductTag = settings.preorderTags.preorderProductTag;
 
   const json = await graphqlJson(
     admin,
@@ -219,6 +221,15 @@ export async function runFridayReset(
               id
               name
               tags
+              lineItems(first: 250) {
+                edges {
+                  node {
+                    product {
+                      tags
+                    }
+                  }
+                }
+              }
               metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {
                 id
                 value
@@ -241,12 +252,21 @@ export async function runFridayReset(
       id: string;
       name: string;
       tags: string[] | string;
+      lineItems?: {
+        edges?: Array<{
+          node?: { product?: { tags?: string[] | string } | null };
+        }>;
+      };
       metafield: { id?: string; value?: string } | null;
     };
 
     const tags = normalizeTags(order.tags);
     if (!hasTag(tags, thursdayEmailSentTag)) continue;
     if (hasTag(tags, shippingPaidTag)) continue;
+    const lineItems = (order.lineItems?.edges ?? []).map((lineEdge) => ({
+      productTags: normalizeTags(lineEdge.node?.product?.tags),
+    }));
+    if (!hasConfiguredProductTag({ lineItems }, preorderProductTag)) continue;
 
     ordersProcessed += 1;
     const draftId = order.metafield?.value;

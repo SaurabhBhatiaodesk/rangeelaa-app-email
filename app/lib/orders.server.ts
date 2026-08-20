@@ -16,6 +16,7 @@ import {
   isAllowedShippingCountry,
   type LineItemInfo,
 } from "./cycle-shared.server";
+import { hasConfiguredProductTag } from "./product-eligibility.server";
 
 export type ShippingOrder = {
   id: string;
@@ -155,9 +156,7 @@ function hasPreorderProductTag(
   order: ShippingOrder,
   preorderProductTag: string,
 ): boolean {
-  return order.lineItems.some((lineItem) =>
-    hasTag(lineItem.productTags, preorderProductTag),
-  );
+  return hasConfiguredProductTag(order, preorderProductTag);
 }
 
 /**
@@ -227,31 +226,6 @@ export async function fetchAwaitingReadinessOrders(
   });
 }
 
-async function fetchOrderCount(
-  admin: AdminGraphql,
-  query: string,
-): Promise<number> {
-  const response = await admin.graphql(
-    `#graphql
-      query ShippingWorkflowOrderCount($query: String!) {
-        ordersCount(query: $query) {
-          count
-        }
-      }`,
-    { variables: { query } },
-  );
-
-  const json = await response.json();
-  if (json.errors?.length) {
-    const message = json.errors
-      .map((e: { message: string }) => e.message)
-      .join("; ");
-    throw new Error(message);
-  }
-
-  return Number(json.data?.ordersCount?.count ?? 0);
-}
-
 function formatNextShippingLabel(): string {
   const value =
     process.env.NEXT_SHIPPING_DATE ||
@@ -273,8 +247,13 @@ export async function fetchShippingWorkflowSummary(
   admin: AdminGraphql,
   workflowTags: PreorderWorkflowTags,
 ): Promise<ShippingWorkflowSummary> {
-  const [readyToShipCount, awaitingPaymentCount] = await Promise.all([
-    fetchOrderCount(
+  const skirtDepositTags = {
+    groupTag: workflowTags.groupTag,
+    partialTag: workflowTags.partialTag,
+  };
+
+  const [readyToShipOrders, awaitingPaymentOrders] = await Promise.all([
+    fetchOrdersByQuery(
       admin,
       [
         "status:open",
@@ -282,20 +261,28 @@ export async function fetchShippingWorkflowSummary(
         `-tag:${workflowTags.shippingPaidTag}`,
         `-tag:${workflowTags.holdForNextCycleTag}`,
       ].join(" AND "),
+      250,
+      skirtDepositTags,
     ),
-    fetchOrderCount(
+    fetchOrdersByQuery(
       admin,
       [
         "status:open",
         `tag:${workflowTags.thursdayEmailSentTag}`,
         `-tag:${workflowTags.shippingPaidTag}`,
       ].join(" AND "),
+      250,
+      skirtDepositTags,
     ),
   ]);
 
   return {
-    readyToShipCount,
-    awaitingPaymentCount,
+    readyToShipCount: readyToShipOrders.filter((order) =>
+      hasPreorderProductTag(order, workflowTags.preorderProductTag),
+    ).length,
+    awaitingPaymentCount: awaitingPaymentOrders.filter((order) =>
+      hasPreorderProductTag(order, workflowTags.preorderProductTag),
+    ).length,
     nextShippingLabel: formatNextShippingLabel(),
   };
 }
@@ -318,9 +305,12 @@ export async function fetchShippingPaidAlerts(
     75,
     skirtDepositTags,
   );
+  const eligiblePaidOrders = paidOrders.filter((order) =>
+    hasPreorderProductTag(order, workflowTags.preorderProductTag),
+  );
 
   const paidEmails = new Set(
-    paidOrders
+    eligiblePaidOrders
       .map((o) => o.email?.toLowerCase())
       .filter((e): e is string => Boolean(e)),
   );
@@ -341,7 +331,7 @@ export async function fetchShippingPaidAlerts(
 
   // Latest shipping-paid date per email — alert only for orders placed after that.
   const latestPaidByEmail = new Map<string, string>();
-  for (const paid of paidOrders) {
+  for (const paid of eligiblePaidOrders) {
     if (!paid.email) continue;
     const key = paid.email.toLowerCase();
     const existing = latestPaidByEmail.get(key);
@@ -358,6 +348,9 @@ export async function fetchShippingPaidAlerts(
       const latestPaidAt = latestPaidByEmail.get(key);
       if (!latestPaidAt) return false;
       if (order.createdAt <= latestPaidAt) return false;
+      if (!hasPreorderProductTag(order, workflowTags.preorderProductTag)) {
+        return false;
+      }
 
       const city = (order.shippingCity || "").toLowerCase();
       if (city === "saskatoon") return false;
