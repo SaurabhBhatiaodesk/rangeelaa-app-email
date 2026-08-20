@@ -106,15 +106,9 @@ export async function resolveShippingRateFromProfiles(
       throw error;
     }
 
-    console.warn(
-      "Shopify deliveryProfiles access denied; using configured shipping fallback",
-      {
-        countryCode,
-        provinceCode,
-        itemCount: destination.itemCount,
-      },
+    throw new Error(
+      "Shopify denied access to deliveryProfiles. Approve the app's read_shipping permission, then rerun the Thursday invoice cycle. No fallback rate was used.",
     );
-    return resolveConfiguredFallbackRate(destination.itemCount);
   }
 
   const candidates = collectDeliveryRateCandidates(
@@ -194,37 +188,6 @@ export async function resolveShippingRateFromProfiles(
     methodName: selected.methodName,
     profileName: selected.profileName,
   };
-}
-
-function resolveConfiguredFallbackRate(itemCount: number): ShippingProfileRate {
-  const base = parseMoneyEnv("SHIPPING_RATE_BASE");
-  const perExtra = parseMoneyEnv("SHIPPING_RATE_PER_EXTRA");
-  const currencyCode = (process.env.SHIPPING_CURRENCY || "CAD").trim() || "CAD";
-
-  const firstItemAmount = base ?? perExtra;
-  if (firstItemAmount === null) {
-    throw new Error(
-      "Access denied for deliveryProfiles field and no fallback shipping rate is configured. Set SHIPPING_RATE_BASE or SHIPPING_RATE_PER_EXTRA.",
-    );
-  }
-
-  const extraItemAmount = perExtra ?? 0;
-  const amount =
-    firstItemAmount + Math.max(0, itemCount - 1) * extraItemAmount;
-
-  return {
-    amount: amount.toFixed(2),
-    currencyCode,
-    methodName: "Configured fallback shipping",
-    profileName: "Fallback shipping rate",
-  };
-}
-
-function parseMoneyEnv(name: string): number | null {
-  const raw = process.env[name]?.trim();
-  if (!raw) return null;
-  const value = Number(raw);
-  return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function isDeliveryProfilesAccessDenied(error: unknown): boolean {
