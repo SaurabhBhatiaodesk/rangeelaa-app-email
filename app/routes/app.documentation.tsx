@@ -105,6 +105,16 @@ export default function DocumentationPage() {
             emails the customer at every stage — nothing else needs to be
             clicked.
           </s-paragraph>
+          <s-banner tone="info" heading="Only configured preorder products appear here">
+            <s-paragraph>
+              This tab only shows orders that include at least one purchased
+              product with the Shopify product tag{" "}
+              <s-text type="strong">Web Saree</s-text> by default. You can
+              change this product tag in Settings. If an order does not include
+              a product with the configured preorder product tag, it is hidden
+              from this preorder readiness list.
+            </s-paragraph>
+          </s-banner>
           <s-ordered-list>
             <s-list-item>
               <s-text type="strong">Piece Made</s-text> — tags the order and
@@ -390,6 +400,13 @@ export default function DocumentationPage() {
             it needs every condition at once (paid, unfulfilled, allowed
             shipping country, not Saskatoon, not india-direct, and at least one
             physical item that requires shipping)
+          </s-list-item>
+          <s-list-item>
+            <s-text type="strong">Order not showing in Tab 01</s-text> - check
+            that at least one product in the order has the preorder product tag
+            configured in Settings. The default is{" "}
+            <s-text type="strong">Web Saree</s-text>. Order tags do not count
+            for this filter.
           </s-list-item>
           <s-list-item>
             <s-text type="strong">

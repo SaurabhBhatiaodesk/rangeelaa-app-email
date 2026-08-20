@@ -62,6 +62,7 @@ model ShopKlaviyoSettings {
   canadaItemTag              String   @default("")
   dispatchItemTag            String   @default("")
   indiaItemTag               String   @default("")
+  preorderProductTag         String   @default("")
   allowedShippingCountryCodes String   @default("")
   updatedAt                  DateTime @updatedAt
 }

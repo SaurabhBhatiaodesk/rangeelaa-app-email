@@ -1,7 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-process.env.DATABASE_URL = ensurePrismaSslMode(process.env.DATABASE_URL);
+const databaseUrl = ensurePrismaSslMode(process.env.DATABASE_URL);
+if (databaseUrl) {
+  process.env.DATABASE_URL = databaseUrl;
+}
 
 const runner = join(
   process.cwd(),

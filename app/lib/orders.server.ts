@@ -65,6 +65,9 @@ const ORDER_NODE_FIELDS = `
         title
         quantity
         requiresShipping
+        product {
+          tags
+        }
       }
     }
   }
@@ -117,11 +120,12 @@ async function fetchOrdersByQuery(
 
     const lineItems: LineItemInfo[] = lineEdges.map((lineEdge) => {
       const line = lineEdge.node;
+      const product = line.product as { tags?: string[] | string } | null;
       return {
         title: String(line.title || ""),
         quantity: Number(line.quantity || 0),
         requiresShipping: line.requiresShipping !== false,
-        productTags: [],
+        productTags: normalizeTags(product?.tags),
       };
     });
 
@@ -145,6 +149,15 @@ async function fetchOrdersByQuery(
       needsShippingPaidAlert: false,
     } satisfies ShippingOrder;
   });
+}
+
+function hasPreorderProductTag(
+  order: ShippingOrder,
+  preorderProductTag: string,
+): boolean {
+  return order.lineItems.some((lineItem) =>
+    hasTag(lineItem.productTags, preorderProductTag),
+  );
 }
 
 /**
@@ -179,6 +192,9 @@ export async function fetchAwaitingReadinessOrders(
   ]);
 
   const awaitingFiltered = awaiting.filter((order) => {
+    if (!hasPreorderProductTag(order, workflowTags.preorderProductTag)) {
+      return false;
+    }
     if (order.isSkirtDeposit) return true;
     const status = (order.displayFulfillmentStatus || "").toUpperCase();
     return status !== "FULFILLED";
@@ -189,6 +205,9 @@ export async function fetchAwaitingReadinessOrders(
     byId.set(order.id, order);
   }
   for (const order of completed) {
+    if (!hasPreorderProductTag(order, workflowTags.preorderProductTag)) {
+      continue;
+    }
     if (!byId.has(order.id)) {
       byId.set(order.id, order);
     }

@@ -38,6 +38,7 @@ export const DEFAULT_PREORDER_TAGS = {
   canadaItemTag: "canada",
   dispatchItemTag: "dispatch",
   indiaItemTag: "india",
+  preorderProductTag: "Web Saree",
   allowedShippingCountryCodes: DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES.join(","),
 } as const;
 
@@ -74,6 +75,7 @@ export type PreorderWorkflowTags = {
   canadaItemTag: string;
   dispatchItemTag: string;
   indiaItemTag: string;
+  preorderProductTag: string;
   allowedShippingCountryCodes: string;
 };
 
@@ -240,6 +242,10 @@ export async function getShopSettings(shop: string): Promise<ShopAppSettings> {
         row?.indiaItemTag,
         DEFAULT_PREORDER_TAGS.indiaItemTag,
       ),
+      preorderProductTag: resolveTag(
+        row?.preorderProductTag,
+        DEFAULT_PREORDER_TAGS.preorderProductTag,
+      ),
       allowedShippingCountryCodes: resolveTag(
         row?.allowedShippingCountryCodes,
         DEFAULT_PREORDER_TAGS.allowedShippingCountryCodes,
@@ -292,6 +298,7 @@ export async function saveShopSettings(
       canadaItemTag: trimOrEmpty(input.canadaItemTag),
       dispatchItemTag: trimOrEmpty(input.dispatchItemTag),
       indiaItemTag: trimOrEmpty(input.indiaItemTag),
+      preorderProductTag: trimOrEmpty(input.preorderProductTag),
       allowedShippingCountryCodes: trimOrEmpty(
         input.allowedShippingCountryCodes,
       ),
@@ -326,6 +333,7 @@ export async function saveShopSettings(
       canadaItemTag: trimOrEmpty(input.canadaItemTag),
       dispatchItemTag: trimOrEmpty(input.dispatchItemTag),
       indiaItemTag: trimOrEmpty(input.indiaItemTag),
+      preorderProductTag: trimOrEmpty(input.preorderProductTag),
       allowedShippingCountryCodes: trimOrEmpty(
         input.allowedShippingCountryCodes,
       ),
@@ -381,6 +389,7 @@ export function parseShopSettingsForm(formData: FormData): ShopSettingsInput {
     canadaItemTag: String(formData.get("canadaItemTag") ?? ""),
     dispatchItemTag: String(formData.get("dispatchItemTag") ?? ""),
     indiaItemTag: String(formData.get("indiaItemTag") ?? ""),
+    preorderProductTag: String(formData.get("preorderProductTag") ?? ""),
     allowedShippingCountryCodes: String(
       formData.get("allowedShippingCountryCodes") ?? "",
     ),

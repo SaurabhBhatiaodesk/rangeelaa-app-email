@@ -75,6 +75,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       canadaItemTag: "",
       dispatchItemTag: "",
       indiaItemTag: "",
+      preorderProductTag: "",
       allowedShippingCountryCodes: "",
     });
     const settings = await getShopSettings(session.shop);
@@ -372,6 +373,22 @@ export default function SettingsPage() {
                 value={field(form, "indiaItemTag")}
                 defaultValue={data.defaults.tags.indiaItemTag}
                 onChange={update("indiaItemTag")}
+              />
+            </s-stack>
+          </s-section>
+
+          <s-section heading="Preorder product eligibility" padding="base">
+            <s-stack direction="block" gap="base">
+              <s-paragraph>
+                Orders appear in the Preorders tab only when at least one
+                purchased product has this Shopify product tag.
+              </s-paragraph>
+              <TagChipField
+                label="Preorder product tag"
+                name="preorderProductTag"
+                value={field(form, "preorderProductTag")}
+                defaultValue={data.defaults.tags.preorderProductTag}
+                onChange={update("preorderProductTag")}
               />
             </s-stack>
           </s-section>
