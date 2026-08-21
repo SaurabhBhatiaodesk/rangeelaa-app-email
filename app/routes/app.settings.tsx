@@ -161,9 +161,183 @@ function TagChipField({
               <s-badge tone={value ? "info" : "neutral"} color="strong">
                 {value || defaultValue}
               </s-badge>
-              <s-icon type="edit" tone="subdued" size="small" />
+              <s-icon type="edit" tone="neutral" size="small" />
             </s-stack>
         </s-clickable>
+          <input type="hidden" name={name} value={value} />
+        </>
+      )}
+    </s-stack>
+  );
+}
+
+function PasswordEditField({
+  label,
+  name,
+  value,
+  details,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  details: string;
+  onChange: (e: Event & { currentTarget: { value: string } }) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const containerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setEditing(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
+  }, [editing]);
+
+  return (
+    <s-stack ref={containerRef as never} direction="block" gap="small-200">
+      <s-text type="strong">{label}</s-text>
+      {editing ? (
+        <s-password-field
+          label={label}
+          labelAccessibilityVisibility="exclusive"
+          name={name}
+          value={value}
+          details={details}
+          onChange={onChange}
+        />
+      ) : (
+        <>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              width: "fit-content",
+            }}
+          >
+            <s-badge tone={value ? "info" : "neutral"} color="strong">
+              {value ? "••••••••••••••••" : "Not set"}
+            </s-badge>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label={`Edit ${label}`}
+              style={{
+                appearance: "none",
+                border: "1px solid #D7D7D7",
+                background: "#FFFFFF",
+                borderRadius: 6,
+                width: 28,
+                height: 28,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              <s-icon type="edit" tone="neutral" size="small" />
+            </button>
+          </div>
+          <s-text tone="neutral">{details}</s-text>
+          <input type="hidden" name={name} value={value} />
+        </>
+      )}
+    </s-stack>
+  );
+}
+
+function TextEditField({
+  label,
+  name,
+  value,
+  details,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  details: string;
+  onChange: (e: Event & { currentTarget: { value: string } }) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const containerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setEditing(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener("mousedown", handleClickOutside);
+  }, [editing]);
+
+  return (
+    <s-stack ref={containerRef as never} direction="block" gap="small-200">
+      <s-text type="strong">{label}</s-text>
+      {editing ? (
+        <s-text-field
+          label={label}
+          labelAccessibilityVisibility="exclusive"
+          name={name}
+          value={value}
+          details={details}
+          onChange={onChange}
+        />
+      ) : (
+        <>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              width: "fit-content",
+            }}
+          >
+            <s-badge tone={value ? "info" : "neutral"} color="strong">
+              {value || "Not set"}
+            </s-badge>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label={`Edit ${label}`}
+              style={{
+                appearance: "none",
+                border: "1px solid #D7D7D7",
+                background: "#FFFFFF",
+                borderRadius: 6,
+                width: 28,
+                height: 28,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              <s-icon type="edit" tone="neutral" size="small" />
+            </button>
+          </div>
+          <s-text tone="neutral">{details}</s-text>
           <input type="hidden" name={name} value={value} />
         </>
       )}
@@ -464,7 +638,7 @@ export default function SettingsPage() {
                 store, so each client can connect their own Klaviyo account
                 here without editing app environment variables.
               </s-paragraph>
-              <s-password-field
+              <PasswordEditField
                 label="Klaviyo private API key"
                 name="klaviyoApiKey"
                 value={field(form, "klaviyoApiKey")}
@@ -486,28 +660,28 @@ export default function SettingsPage() {
                 Short ID from the Klaviyo template URL. Sent on each Klaviyo
                 event — your Flow must use the matching template.
               </s-paragraph>
-              <s-text-field
+              <TextEditField
                 label="Piece Made template ID"
                 name="pieceMadeTemplateId"
                 value={field(form, "pieceMadeTemplateId")}
                 details={`Default: ${data.defaults.templates.pieceMade}`}
                 onChange={update("pieceMadeTemplateId")}
               />
-              <s-text-field
+              <TextEditField
                 label="Leaving for Canada template ID"
                 name="leavingForCanadaTemplateId"
                 value={field(form, "leavingForCanadaTemplateId")}
                 details={`Default: ${data.defaults.templates.leavingForCanada}`}
                 onChange={update("leavingForCanadaTemplateId")}
               />
-              <s-text-field
+              <TextEditField
                 label="Arrived in Canada template ID"
                 name="arrivedInCanadaTemplateId"
                 value={field(form, "arrivedInCanadaTemplateId")}
                 details={`Default: ${data.defaults.templates.arrivedInCanada}`}
                 onChange={update("arrivedInCanadaTemplateId")}
               />
-              <s-text-field
+              <TextEditField
                 label="Thursday shipping invoice template ID"
                 name="thursdayTemplateId"
                 value={field(form, "thursdayTemplateId")}
