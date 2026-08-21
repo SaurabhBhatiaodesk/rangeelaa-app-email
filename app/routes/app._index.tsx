@@ -526,11 +526,21 @@ export default function ShippingManagerIndex() {
       </SaveBar>
 
       <s-box paddingBlockEnd="small-200">
-        <s-stack direction="inline" alignItems="center" gap="small-200">
+        <s-stack
+          direction="inline"
+          alignItems="center"
+          justifyContent="space-between"
+          gap="base"
+        >
+          <s-stack direction="inline" alignItems="center" gap="small-200">
           <s-icon type="wand" tone="info" size="base" />
           <span style={{ fontSize: 20, fontWeight: 700, color: "#1A1F36" }}>
             Welcome back — here's your shipping overview.
           </span>
+          </s-stack>
+          <s-badge tone="info" color="strong">
+            Web Saree tag based app (preorder)
+          </s-badge>
         </s-stack>
       </s-box>
       <s-box paddingBlockEnd="large">

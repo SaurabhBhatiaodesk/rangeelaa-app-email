@@ -100,7 +100,7 @@ export default function DocumentationPage() {
       tone: "info",
       content: (
         <s-stack gap="base">
-          <s-banner tone="info" heading="Kaam kya hai">
+          <s-banner tone="info" heading="What this tab does">
             <s-paragraph>
               This tab shows only orders where the customer bought a product
               with the configured product tag. Default tag is{" "}
@@ -139,7 +139,7 @@ export default function DocumentationPage() {
       tone: "neutral",
       content: (
         <s-stack gap="base">
-          <s-banner tone="info" heading="Kaam kya hai">
+          <s-banner tone="info" heading="What this tab does">
             <s-paragraph>
               This tab is a backup for status emails. Normal emails already
               send from Tab 01 button clicks. Use this tab only to preview or
@@ -170,7 +170,7 @@ export default function DocumentationPage() {
       tone: "success",
       content: (
         <s-stack gap="base">
-          <s-banner tone="success" heading="Kaam kya hai">
+          <s-banner tone="success" heading="What this tab does">
             <s-paragraph>
               This tab creates the shipping payment invoice for eligible Web
               Saree orders. Same customer orders are combined into one draft
@@ -211,7 +211,7 @@ export default function DocumentationPage() {
       tone: "info",
       content: (
         <s-stack gap="base">
-          <s-banner tone="info" heading="Kaam kya hai">
+          <s-banner tone="info" heading="What this tab does">
             <s-paragraph>
               This tab shows Web Saree orders bought after the same customer
               already paid shipping once.
@@ -238,7 +238,7 @@ export default function DocumentationPage() {
       tone: "caution",
       content: (
         <s-stack gap="base">
-          <s-banner tone="warning" heading="Kaam kya hai">
+          <s-banner tone="warning" heading="What this tab does">
             <s-paragraph>
               This tab resets unpaid Thursday shipping invoices for Web Saree
               orders, so they can be invoiced again next Thursday.
