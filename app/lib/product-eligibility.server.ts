@@ -6,7 +6,10 @@ import {
 } from "./cycle-shared.server";
 
 export type ProductTaggedOrder = {
-  lineItems: Array<Pick<LineItemInfo, "productTags">>;
+  lineItems: Array<
+    Pick<LineItemInfo, "productTags"> &
+      Partial<Pick<LineItemInfo, "quantity" | "requiresShipping">>
+  >;
 };
 
 export function hasConfiguredProductTag(
@@ -16,6 +19,17 @@ export function hasConfiguredProductTag(
   return order.lineItems.some((lineItem) =>
     hasTag(lineItem.productTags, productTag),
   );
+}
+
+export function countConfiguredProductShippingItems(
+  order: ProductTaggedOrder,
+  productTag: string,
+): number {
+  return order.lineItems.reduce((sum, lineItem) => {
+    if (lineItem.requiresShipping === false) return sum;
+    if (!hasTag(lineItem.productTags, productTag)) return sum;
+    return sum + Number(lineItem.quantity || 0);
+  }, 0);
 }
 
 export async function orderHasConfiguredProductTag(

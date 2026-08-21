@@ -1,4 +1,4 @@
-/** Order tags used by Rangeela Shipping Manager */
+/** Order tags used by Backend Heroku Klaviyo Manager */
 
 export const TAGS = {
   PIECE_MADE: "piece-made-notified",

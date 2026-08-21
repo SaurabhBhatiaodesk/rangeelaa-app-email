@@ -6,7 +6,6 @@ import {
   type CycleOrder,
   type ItemRoutingTags,
   type LineItemInfo,
-  countBillablePhysicalShippingItems,
   graphqlJson,
   isAllowedShippingCountry,
   isSaskatoon,
@@ -17,7 +16,10 @@ import {
   getShopSettings,
   type PreorderWorkflowTags,
 } from "./klaviyo-settings.server";
-import { hasConfiguredProductTag } from "./product-eligibility.server";
+import {
+  countConfiguredProductShippingItems,
+  hasConfiguredProductTag,
+} from "./product-eligibility.server";
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
@@ -162,7 +164,7 @@ function isPool1Preorder(
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
   if (isIndiaDirect(order)) return false;
-  return countBillablePhysicalShippingItems(order.lineItems) > 0;
+  return countTaggedBillableItemCount(order, preorderProductTag) > 0;
 }
 
 function isPool2Rtw(
@@ -180,16 +182,26 @@ function isPool2Rtw(
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
   if (isIndiaDirect(order)) return false;
-  if (countBillablePhysicalShippingItems(order.lineItems) < 1) {
+  if (countTaggedBillableItemCount(order, preorderProductTag) < 1) {
     return false;
   }
 
   return true;
 }
 
-function billableItemCount(order: CycleOrder): number {
+function billableItemCount(
+  order: CycleOrder,
+  preorderProductTag: string,
+): number {
   if (isIndiaDirect(order)) return 0;
-  return countBillablePhysicalShippingItems(order.lineItems);
+  return countTaggedBillableItemCount(order, preorderProductTag);
+}
+
+function countTaggedBillableItemCount(
+  order: CycleOrder,
+  preorderProductTag: string,
+): number {
+  return countConfiguredProductShippingItems(order, preorderProductTag);
 }
 
 function hasPreorderProductTag(
@@ -558,7 +570,8 @@ export async function runThursdayCycle(
 
   for (const [email, orders] of byEmail) {
     const itemCount = orders.reduce(
-      (sum, order) => sum + billableItemCount(order),
+      (sum, order) =>
+        sum + billableItemCount(order, workflowTags.preorderProductTag),
       0,
     );
     if (itemCount <= 0) continue;

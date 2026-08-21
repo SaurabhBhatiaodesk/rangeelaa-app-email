@@ -202,7 +202,7 @@ export default function SettingsPage() {
   return (
     <s-page heading="Settings" inlineSize="large">
       <s-link slot="breadcrumb-actions" href="/app">
-        Shipping Manager
+        Backend Heroku Klaviyo Manager
       </s-link>
 
       {!data.klaviyoConfigured && (

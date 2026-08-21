@@ -2,7 +2,7 @@ export default function AdditionalPage() {
   return (
     <s-page heading="Additional page">
       <s-link slot="breadcrumb-actions" href="/app">
-        Shipping Manager
+        Backend Heroku Klaviyo Manager
       </s-link>
 
       <s-section heading="Multiple pages">

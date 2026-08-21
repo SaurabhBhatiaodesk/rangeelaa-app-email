@@ -11,12 +11,11 @@ import type {
   PreorderWorkflowTags,
 } from "./klaviyo-settings.server";
 import { sendStatusEmailIfNeeded } from "./send-status-email.server";
+import { isAllowedShippingCountry, type LineItemInfo } from "./cycle-shared.server";
 import {
-  countBillablePhysicalShippingItems,
-  isAllowedShippingCountry,
-  type LineItemInfo,
-} from "./cycle-shared.server";
-import { hasConfiguredProductTag } from "./product-eligibility.server";
+  countConfiguredProductShippingItems,
+  hasConfiguredProductTag,
+} from "./product-eligibility.server";
 
 export type ShippingOrder = {
   id: string;
@@ -358,7 +357,12 @@ export async function fetchShippingPaidAlerts(
       if (!isAllowedShippingCountry(order, workflowTags)) return false;
 
       if (hasTag(order.tags, TAGS.INDIA_DIRECT)) return false;
-      if (countBillablePhysicalShippingItems(order.lineItems) < 1) {
+      if (
+        countConfiguredProductShippingItems(
+          order,
+          workflowTags.preorderProductTag,
+        ) < 1
+      ) {
         return false;
       }
 
@@ -401,13 +405,25 @@ export async function addOrderTags(
 async function getOrderSnapshot(
   admin: AdminGraphql,
   orderId: string,
-): Promise<{ email: string | null; tags: string[] } | null> {
+): Promise<{ email: string | null; tags: string[]; lineItems: LineItemInfo[] } | null> {
   const response = await admin.graphql(
     `#graphql
       query OrderSnapshot($id: ID!) {
         order(id: $id) {
           email
           tags
+          lineItems(first: 250) {
+            edges {
+              node {
+                title
+                quantity
+                requiresShipping
+                product {
+                  tags
+                }
+              }
+            }
+          }
         }
       }`,
     { variables: { id: orderId } },
@@ -415,9 +431,29 @@ async function getOrderSnapshot(
   const json = await response.json();
   const order = json.data?.order;
   if (!order) return null;
+  const lineEdges =
+    (
+      order.lineItems as {
+        edges?: Array<{
+          node?: {
+            title?: string;
+            quantity?: number;
+            requiresShipping?: boolean;
+            product?: { tags?: string[] | string } | null;
+          };
+        }>;
+      }
+    )?.edges ?? [];
+
   return {
     email: order.email || null,
     tags: normalizeTags(order.tags),
+    lineItems: lineEdges.map((lineEdge) => ({
+      title: String(lineEdge.node?.title || ""),
+      quantity: Number(lineEdge.node?.quantity || 0),
+      requiresShipping: lineEdge.node?.requiresShipping !== false,
+      productTags: normalizeTags(lineEdge.node?.product?.tags),
+    })),
   };
 }
 
@@ -460,6 +496,12 @@ export async function applyStatusAction(
   const snapshot = await getOrderSnapshot(admin, orderId);
   if (!snapshot) {
     return { ok: false, error: "Order not found" };
+  }
+  if (!hasConfiguredProductTag(snapshot, workflowTags.preorderProductTag)) {
+    return {
+      ok: false,
+      error: `Order is not eligible because no purchased product has the ${workflowTags.preorderProductTag} tag`,
+    };
   }
 
   const { tags } = snapshot;

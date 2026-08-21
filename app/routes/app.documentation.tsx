@@ -443,13 +443,13 @@ export default function DocumentationPage() {
   return (
     <s-page heading="Documentation" inlineSize="large">
       <s-link slot="breadcrumb-actions" href="/app">
-        Shipping Manager
+        Backend Heroku Klaviyo Manager
       </s-link>
 
       <s-section heading="Your 5-Step Weekly Workflow" padding="base">
         <s-stack gap="base">
           <s-paragraph>
-            Rangeela Shipping Manager automates preorder status updates, weekly
+            Backend Heroku Klaviyo Manager automates preorder status updates, weekly
             combined shipping invoices, the "bought again after paying" alert,
             and the Friday cleanup for unpaid invoices.
           </s-paragraph>

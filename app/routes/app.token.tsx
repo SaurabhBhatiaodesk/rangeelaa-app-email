@@ -221,7 +221,7 @@ export default function Index() {
       inlineSize="large"
     >
       <s-link slot="breadcrumb-actions" href="/app">
-        Shipping Manager
+        Backend Heroku Klaviyo Manager
       </s-link>
 
       <s-button

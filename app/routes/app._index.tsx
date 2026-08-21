@@ -517,7 +517,7 @@ export default function ShippingManagerIndex() {
   const thursdayResult = lastThursdayRun ?? data.thursdayPreview;
 
   return (
-    <s-page heading="Rangeela Shipping Manager" inlineSize="large">
+    <s-page heading="Backend Heroku Klaviyo Manager" inlineSize="large">
       <SaveBar open={thursdayRunModeDirty}>
         <button variant="primary" onClick={saveThursdayRunMode}>
           Save
@@ -1217,7 +1217,7 @@ export default function ShippingManagerIndex() {
                           india-direct
                         </s-list-item>
                         <s-list-item>
-                          Open: Shipping Manager → 03. Thursday invoice
+                          Open: Backend Heroku Klaviyo Manager → 03. Thursday invoice
                         </s-list-item>
                         <s-list-item>
                           Select: Manual run. If the Shopify Save bar appears,
