@@ -777,6 +777,51 @@ export default function ShippingManagerIndex() {
       {tab === "preorders" && (
         <s-section heading="Preorders — Awaiting Readiness" padding="base">
           <s-stack direction="block" gap="large">
+            <s-banner tone="info" heading="What this tab shows">
+              <s-stack gap="small-200">
+                <s-paragraph>
+                  This tab shows only orders that include a product with the
+                  configured Shopify product tag, normally Web Saree. Orders
+                  without that product tag are hidden from this app.
+                </s-paragraph>
+                <s-paragraph>
+                  Staff should move each preorder through the status buttons in
+                  order: Piece Made, Leaving for Canada, then Arrived in Canada.
+                </s-paragraph>
+              </s-stack>
+            </s-banner>
+
+            <s-box
+              background="base"
+              borderWidth="base"
+              borderStyle="solid"
+              borderColor="subdued"
+              borderRadius="large-100"
+              padding="base"
+            >
+              <s-stack direction="block" gap="small-200">
+                <s-text type="strong">Button and email flow</s-text>
+                <s-unordered-list>
+                  <s-list-item>
+                    Clicking a status button adds the matching Shopify order tag
+                    and sends the matching Klaviyo event immediately.
+                  </s-list-item>
+                  <s-list-item>
+                    The next button unlocks only after the previous step is
+                    completed, so staff can follow the correct order.
+                  </s-list-item>
+                  <s-list-item>
+                    Completed steps display as badges. A completed badge does
+                    not resend the customer email.
+                  </s-list-item>
+                  <s-list-item>
+                    Arrived in Canada also adds the Ready to Ship tag so the
+                    order can qualify for the Thursday shipping invoice cycle.
+                  </s-list-item>
+                </s-unordered-list>
+              </s-stack>
+            </s-box>
+
             {data.preorders.length === 0 ? (
               <s-banner heading="No preorders yet" tone="info">
                 <s-paragraph>
@@ -1002,6 +1047,35 @@ export default function ShippingManagerIndex() {
               </s-stack>
             </s-box>
 
+            <s-box
+              background="base"
+              borderWidth="base"
+              borderStyle="solid"
+              borderColor="subdued"
+              borderRadius="large-100"
+              padding="base"
+            >
+              <s-stack direction="block" gap="small-200">
+                <s-text type="strong">Preview and retry rules</s-text>
+                <s-unordered-list>
+                  <s-list-item>
+                    Preview only checks which Web Saree orders still need a
+                    status email event. It does not send emails and does not
+                    update tags.
+                  </s-list-item>
+                  <s-list-item>
+                    Send pending emails now sends only missing Klaviyo events
+                    where the status tag exists but the matching email-sent tag
+                    is missing.
+                  </s-list-item>
+                  <s-list-item>
+                    After Klaviyo accepts the event, the app adds the matching
+                    email-sent tag so the same status email is not retried again.
+                  </s-list-item>
+                </s-unordered-list>
+              </s-stack>
+            </s-box>
+
             <s-banner heading="Tags, labels &amp; templates" tone="info">
               Configure Shopify order tags, button labels, and Klaviyo template
               IDs on the Settings page.
@@ -1148,6 +1222,38 @@ export default function ShippingManagerIndex() {
               shipping countries from Settings ({data.allowedCountryCodesLabel}
               ). Excludes Saskatoon and India-only / mixed India orders.
             </s-paragraph>
+
+            <s-box
+              background="base"
+              borderWidth="base"
+              borderStyle="solid"
+              borderColor="subdued"
+              borderRadius="large-100"
+              padding="base"
+            >
+              <s-stack direction="block" gap="small-200">
+                <s-text type="strong">Which orders qualify for this cycle</s-text>
+                <s-unordered-list>
+                  <s-list-item>
+                    Preorder orders qualify after Arrived in Canada and Ready to
+                    Ship are completed.
+                  </s-list-item>
+                  <s-list-item>
+                    Ready-to-wear Web Saree orders qualify when they are paid
+                    and still unfulfilled.
+                  </s-list-item>
+                  <s-list-item>
+                    The order must include a Web Saree tagged product that
+                    requires shipping.
+                  </s-list-item>
+                  <s-list-item>
+                    The app excludes Saskatoon, India-direct, unsupported
+                    shipping countries, already shipping-paid orders, and orders
+                    already marked thursday-email-sent.
+                  </s-list-item>
+                </s-unordered-list>
+              </s-stack>
+            </s-box>
 
             <s-box
               background={manualTestOpen ? "subdued" : "base"}
@@ -1497,6 +1603,23 @@ export default function ShippingManagerIndex() {
                 )}
               </s-box>
             )}
+
+            <s-banner tone="info" heading="How shipping is calculated">
+              <s-stack gap="small-200">
+                <s-paragraph>
+                  The Items count includes only Web Saree tagged line items that
+                  require shipping. If the same customer has multiple eligible
+                  orders, the app combines those Web Saree item quantities into
+                  one count.
+                </s-paragraph>
+                <s-paragraph>
+                  The Shipping amount is then read from Shopify Shipping
+                  profiles using the customer shipping country/province and that
+                  Web Saree item count. The app does not use a hardcoded
+                  fallback rate.
+                </s-paragraph>
+              </s-stack>
+            </s-banner>
           </s-stack>
         </s-section>
       )}
@@ -1532,6 +1655,41 @@ export default function ShippingManagerIndex() {
                     </s-paragraph>
                   </s-stack>
                 </s-box>
+
+                <s-box
+                  background="base"
+                  borderWidth="base"
+                  borderStyle="solid"
+                  borderColor="subdued"
+                  borderRadius="large-100"
+                  padding="base"
+                >
+                  <s-stack direction="block" gap="small-200">
+                    <s-text type="strong">How this tab decides alerts</s-text>
+                    <s-unordered-list>
+                      <s-list-item>
+                        The customer must already have a Web Saree order marked
+                        shipping-paid.
+                      </s-list-item>
+                      <s-list-item>
+                        The newer order must also contain a Web Saree tagged
+                        product, must need shipping, and must be in an allowed
+                        shipping country.
+                      </s-list-item>
+                      <s-list-item>
+                        Ship now opens Shopify Admin for manual fulfilment. The
+                        app does not calculate a new shipping invoice from that
+                        button.
+                      </s-list-item>
+                      <s-list-item>
+                        Hold for next Thursday adds hold-for-next-cycle, hides
+                        the alert, and lets the order join the next Thursday
+                        invoice run where shipping is calculated.
+                      </s-list-item>
+                    </s-unordered-list>
+                  </s-stack>
+                </s-box>
+
                 {visibleAlerts.length === 0 ? (
                   <s-paragraph>No alerts right now.</s-paragraph>
                 ) : (
@@ -1580,6 +1738,39 @@ export default function ShippingManagerIndex() {
                 </s-paragraph>
               </s-stack>
             </s-box>
+
+            <s-box
+              background="base"
+              borderWidth="base"
+              borderStyle="solid"
+              borderColor="subdued"
+              borderRadius="large-100"
+              padding="base"
+            >
+              <s-stack direction="block" gap="small-200">
+                <s-text type="strong">What the backup reset changes</s-text>
+                <s-unordered-list>
+                  <s-list-item>
+                    Preview only shows how many unpaid Thursday invoice orders
+                    would be reset. It makes no changes.
+                  </s-list-item>
+                  <s-list-item>
+                    Run Friday backup now removes thursday-email-sent, adds
+                    pushed-to-next-weekend, clears the saved Thursday draft ID,
+                    and cancels the old unpaid draft invoice.
+                  </s-list-item>
+                  <s-list-item>
+                    Orders that already have shipping-paid are not reset. Paid
+                    shipping stays completed.
+                  </s-list-item>
+                  <s-list-item>
+                    After reset, the order can be included again in a future
+                    Thursday shipping invoice cycle.
+                  </s-list-item>
+                </s-unordered-list>
+              </s-stack>
+            </s-box>
+
             <s-button-group
               gap="base"
               accessibilityLabel="Friday reset actions"
