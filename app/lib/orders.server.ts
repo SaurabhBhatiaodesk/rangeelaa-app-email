@@ -519,13 +519,13 @@ export async function applyStatusAction(
 
   if (action === "hold_for_next_cycle") {
     if (hasTag(tags, workflowTags.holdForNextCycleTag)) {
-      return { ok: true, message: "Already held for next Thursday cycle" };
+      return { ok: true, message: "Already held for next Thursday" };
     }
     const result = await addOrderTags(admin, orderId, [
       workflowTags.holdForNextCycleTag,
     ]);
     if (!result.ok) return result;
-    return { ok: true, message: "Held for next Thursday cycle" };
+    return { ok: true, message: "Held for next Thursday" };
   }
 
   if (action === "piece_made") {

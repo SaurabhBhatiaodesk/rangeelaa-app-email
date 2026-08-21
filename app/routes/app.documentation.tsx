@@ -277,7 +277,7 @@ export default function DocumentationPage() {
               or send anything automatically here.
             </s-list-item>
             <s-list-item>
-              <s-text type="strong">Hold for next cycle</s-text> — tags the
+              <s-text type="strong">Hold for next Thursday</s-text> — tags the
               order so it automatically joins the next Thursday combined invoice
               (Tab 03) instead, even though shipping was already paid once.
             </s-list-item>

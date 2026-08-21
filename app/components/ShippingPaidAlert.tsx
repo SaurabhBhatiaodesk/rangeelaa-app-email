@@ -43,7 +43,7 @@ export function ShippingPaidAlert({ order, busy, onHold }: Props) {
             {...(busy ? { loading: true } : {})}
             onClick={() => onHold(order.id)}
           >
-            Hold for next cycle
+            Hold for next Thursday
           </s-button>
         </s-stack>
       </s-stack>
