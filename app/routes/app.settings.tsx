@@ -153,17 +153,38 @@ function TagChipField({
         />
       ) : (
         <>
-        <s-clickable
-          onClick={() => setEditing(true)}
-          accessibilityLabel={`Edit ${label}`}
-        >
-            <s-stack direction="inline" gap="small-200" alignItems="center">
-              <s-badge tone={value ? "info" : "neutral"} color="strong">
-                {value || defaultValue}
-              </s-badge>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              width: "fit-content",
+            }}
+          >
+            <s-badge tone={value ? "info" : "neutral"} color="strong">
+              {value || defaultValue}
+            </s-badge>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label={`Edit ${label}`}
+              style={{
+                appearance: "none",
+                border: "1px solid #D7D7D7",
+                background: "#FFFFFF",
+                borderRadius: 6,
+                width: 28,
+                height: 28,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
               <s-icon type="edit" tone="neutral" size="small" />
-            </s-stack>
-        </s-clickable>
+            </button>
+          </div>
           <input type="hidden" name={name} value={value} />
         </>
       )}
@@ -593,35 +614,35 @@ export default function SettingsPage() {
                 Text shown on action buttons and completed-step badges on the
                 Preorders tab.
               </s-paragraph>
-              <s-text-field
+              <TextEditField
                 label="Piece Made button / badge"
                 name="pieceMade"
                 value={field(form, "pieceMade")}
                 details={`Default: ${data.defaults.labels.pieceMade}`}
                 onChange={update("pieceMade")}
               />
-              <s-text-field
+              <TextEditField
                 label="Leaving for Canada button / badge"
                 name="leavingForCanada"
                 value={field(form, "leavingForCanada")}
                 details={`Default: ${data.defaults.labels.leavingForCanada}`}
                 onChange={update("leavingForCanada")}
               />
-              <s-text-field
+              <TextEditField
                 label="Arrived in Canada button / badge"
                 name="arrivedInCanada"
                 value={field(form, "arrivedInCanada")}
                 details={`Default: ${data.defaults.labels.arrivedInCanada}`}
                 onChange={update("arrivedInCanada")}
               />
-              <s-text-field
+              <TextEditField
                 label="Skirt deposit button"
                 name="depositFulfilled"
                 value={field(form, "depositFulfilled")}
                 details={`Default: ${data.defaults.labels.depositFulfilled}`}
                 onChange={update("depositFulfilled")}
               />
-              <s-text-field
+              <TextEditField
                 label="Skirt deposit completed badge"
                 name="depositFulfilledDone"
                 value={field(form, "depositFulfilledDone")}
