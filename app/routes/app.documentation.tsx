@@ -338,6 +338,35 @@ export default function DocumentationPage() {
 
       <s-section heading="Tab Based Workflow" padding="base">
         <s-stack gap="base">
+          <s-box
+            background="base"
+            borderWidth="base"
+            borderStyle="solid"
+            borderColor="subdued"
+            borderRadius="large-100"
+            padding="none"
+            overflow="hidden"
+          >
+            <div
+              style={{
+                background: "#8FD3FF",
+                padding: "14px 16px",
+              }}
+            >
+              <s-stack direction="inline" gap="small-200" alignItems="center">
+                <s-icon type="info" tone="info" />
+                <s-text type="strong">What this app tracks</s-text>
+              </s-stack>
+            </div>
+            <s-box padding="base">
+              <s-paragraph>
+                This app is built for orders where the customer purchased a
+                product with the configured Shopify product tag. The default tag
+                is <s-text type="strong">Web Saree</s-text>. Orders without this
+                product tag are not shown or processed by the app.
+              </s-paragraph>
+            </s-box>
+          </s-box>
           <s-paragraph>
             This guide explains the app based on the same five tabs shown on the
             Home page.
