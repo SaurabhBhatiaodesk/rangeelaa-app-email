@@ -39,7 +39,7 @@ export async function resolveShippingRateFromProfiles(
               node {
                 name
                 profileLocationGroups {
-                  locationGroupZones(first: 20) {
+                  locationGroupZones(first: 100) {
                     edges {
                       node {
                         zone {
@@ -53,7 +53,7 @@ export async function resolveShippingRateFromProfiles(
                             }
                           }
                         }
-                        methodDefinitions(first: 10) {
+                        methodDefinitions(first: 100) {
                           edges {
                             node {
                               active
@@ -99,7 +99,7 @@ export async function resolveShippingRateFromProfiles(
             }
           }
         }`,
-      { first: 10 },
+      { first: 50 },
     );
   } catch (error) {
     if (!isDeliveryProfilesAccessDenied(error)) {
@@ -161,20 +161,40 @@ export async function resolveShippingRateFromProfiles(
     conditionMatched.length > 0 ? conditionMatched : conditionless;
 
   if (matchedRates.length === 0) {
-    throw new Error(
-      `No Shopify shipping profile rate matched ${destination.itemCount} physical item(s) for ${countryCode}`,
+    const positiveFallbackRates = matchingMethod.filter(
+      (candidate) => candidate.amountNumber > 0,
     );
+    if (positiveFallbackRates.length === 0) {
+      throw new Error(
+        `No Shopify shipping profile rate matched ${destination.itemCount} physical item(s) for ${countryCode}`,
+      );
+    }
+    const selectedFallback = selectLowestRate(positiveFallbackRates);
+    return {
+      amount: selectedFallback.amount,
+      currencyCode: selectedFallback.currencyCode,
+      methodName: selectedFallback.methodName,
+      profileName: selectedFallback.profileName,
+    };
   }
 
-  const selectableRates = matchedRates.some(
+  const exactPaidRates = conditionMatched.filter(
     (candidate) => candidate.amountNumber > 0,
-  )
-    ? matchedRates.filter((candidate) => candidate.amountNumber > 0)
-    : matchedRates;
+  );
+  const defaultPaidRates = conditionless.filter(
+    (candidate) => candidate.amountNumber > 0,
+  );
+  const anyPaidRates = matchingMethod.filter(
+    (candidate) => candidate.amountNumber > 0,
+  );
+  const selectableRates =
+    exactPaidRates.length > 0
+      ? exactPaidRates
+      : defaultPaidRates.length > 0
+        ? defaultPaidRates
+        : anyPaidRates;
 
-  const selected = selectableRates.sort(
-    (a, b) => a.amountNumber - b.amountNumber,
-  )[0]!;
+  const selected = selectLowestRate(selectableRates);
 
   if (selected.amountNumber <= 0) {
     throw new Error(
@@ -188,6 +208,10 @@ export async function resolveShippingRateFromProfiles(
     methodName: selected.methodName,
     profileName: selected.profileName,
   };
+}
+
+function selectLowestRate(candidates: DeliveryRateCandidate[]): DeliveryRateCandidate {
+  return [...candidates].sort((a, b) => a.amountNumber - b.amountNumber)[0]!;
 }
 
 function isDeliveryProfilesAccessDenied(error: unknown): boolean {

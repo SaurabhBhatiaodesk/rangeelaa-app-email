@@ -52,6 +52,15 @@ type FetcherResultWithRows = {
 
 const ALERT_HIDE_ACTIONS = ["hold_for_next_cycle"] as const;
 
+function isReadShippingPermissionError(message: string | null): boolean {
+  return Boolean(
+    message &&
+      /read_shipping|deliveryProfiles|denied access|access denied/i.test(
+        message,
+      ),
+  );
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
@@ -711,10 +720,13 @@ export default function ShippingManagerIndex() {
       {data.loadError && (
         <s-banner heading="Could not load data" tone="critical">
           <s-paragraph>{data.loadError}</s-paragraph>
-          <s-paragraph>
-            Reopen or reinstall the app and approve the{" "}
-            <s-text type="strong">read_shipping</s-text> permission if prompted.
-          </s-paragraph>
+          {isReadShippingPermissionError(data.loadError) ? (
+            <s-paragraph>
+              Reopen or reinstall the app and approve the{" "}
+              <s-text type="strong">read_shipping</s-text> permission if
+              prompted.
+            </s-paragraph>
+          ) : null}
         </s-banner>
       )}
 
