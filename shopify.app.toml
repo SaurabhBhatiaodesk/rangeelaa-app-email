@@ -43,6 +43,10 @@ topics = ["app/scopes_update"]
 uri = "/webhooks/orders/updated"
 topics = ["orders/updated"]
 
+[[webhooks.subscriptions]]
+uri = "/webhooks/orders/created"
+topics = ["orders/create"]
+
 [auth]
 redirect_urls = [
   "https://rangeelaa-thursday-emails-18ca86a014f2.herokuapp.com/auth/callback"

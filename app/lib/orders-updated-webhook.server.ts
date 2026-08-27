@@ -200,11 +200,10 @@ export async function processStatusEmailTags(
     return;
   }
 
-  let tags = normalizeTags(orderPayload?.tags);
-  let email = orderPayload?.email ?? null;
-
-  if (tags.length === 0) tags = order.tags;
-  if (!email) email = order.email;
+  const tags = Array.from(
+    new Set([...order.tags, ...normalizeTags(orderPayload?.tags)]),
+  );
+  const email = orderPayload?.email ?? order.email;
 
   for (const statusAction of STATUS_EMAIL_ACTIONS) {
     const result = await sendStatusEmailIfNeeded(admin, {

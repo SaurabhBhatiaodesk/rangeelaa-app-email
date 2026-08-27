@@ -206,13 +206,13 @@ export async function resolveShippingRateFromProfiles(
         ? defaultPaidRates
         : anyPaidRates;
 
-  const selected = selectLowestRate(selectableRates);
-
-  if (selected.amountNumber <= 0) {
+  if (selectableRates.length === 0) {
     throw new Error(
       `Shopify shipping profile returned only zero-dollar rates for ${destination.itemCount} physical item(s) to ${countryCode}`,
     );
   }
+
+  const selected = selectLowestRate(selectableRates);
 
   return {
     amount: selected.amount,
