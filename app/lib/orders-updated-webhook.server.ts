@@ -3,7 +3,12 @@ import { graphqlJson } from "./cycle-shared.server";
 import { hasTag, normalizeTags } from "./tags";
 import { voidThursdayDraftForOrder } from "./friday-reset.server";
 import { getShopSettings } from "./klaviyo-settings.server";
-import { orderHasConfiguredProductTag } from "./product-eligibility.server";
+import { sendStatusEmailIfNeeded } from "./send-status-email.server";
+import {
+  classifyOrder,
+  type ProductTaggedOrder,
+} from "./product-eligibility.server";
+import type { StatusEmailAction } from "./tags";
 
 type WebhookNoteAttribute = {
   name?: string;
@@ -14,6 +19,7 @@ type OrderWebhookPayload = {
   id?: string | number;
   admin_graphql_api_id?: string;
   financial_status?: string;
+  email?: string | null;
   note_attributes?: WebhookNoteAttribute[];
   note?: string | null;
   tags?: string[] | string;
@@ -22,7 +28,17 @@ type OrderWebhookPayload = {
 type OrderTagsResponse = {
   data?: {
     order?: {
+      email?: string | null;
       tags?: string[] | string;
+      lineItems?: {
+        edges?: Array<{
+          node?: {
+            quantity?: number;
+            requiresShipping?: boolean;
+            product?: { tags?: string[] | string } | null;
+          };
+        }>;
+      };
     } | null;
     orderUpdate?: {
       userErrors?: Array<{ field?: string[]; message: string }>;
@@ -112,6 +128,104 @@ function normalizeOrderGid(id: string): string | null {
   return null;
 }
 
+async function fetchOrderForClassification(
+  admin: AdminGraphql,
+  orderId: string,
+): Promise<
+  | (ProductTaggedOrder & {
+      email: string | null;
+      tags: string[];
+    })
+  | null
+> {
+  const res = (await graphqlJson(
+    admin,
+    `#graphql
+      query OrderForClassification($id: ID!) {
+        order(id: $id) {
+          email
+          tags
+          lineItems(first: 250) {
+            edges {
+              node {
+                quantity
+                requiresShipping
+                product {
+                  tags
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+    { id: orderId },
+  )) as OrderTagsResponse;
+
+  const order = res.data?.order;
+  if (!order) return null;
+
+  const lineItems = (order.lineItems?.edges ?? []).map((edge) => ({
+    quantity: Number(edge.node?.quantity || 0),
+    requiresShipping: edge.node?.requiresShipping !== false,
+    productTags: normalizeTags(edge.node?.product?.tags),
+  }));
+
+  return {
+    email: order.email ?? null,
+    tags: normalizeTags(order.tags),
+    lineItems,
+  };
+}
+
+const STATUS_EMAIL_ACTIONS: StatusEmailAction[] = [
+  "piece_made",
+  "leaving_for_canada",
+  "arrived_in_canada",
+];
+
+export async function processStatusEmailTags(
+  admin: AdminGraphql,
+  orderPayload: OrderWebhookPayload,
+  shop: string,
+) {
+  const orderGid = normalizeOrderGid(
+    String(orderPayload?.admin_graphql_api_id || orderPayload?.id || ""),
+  );
+  if (!orderGid) return;
+
+  const settings = await getShopSettings(shop);
+  const order = await fetchOrderForClassification(admin, orderGid);
+  if (!order || classifyOrder(order, settings.preorderTags) !== "preorder") {
+    return;
+  }
+
+  let tags = normalizeTags(orderPayload?.tags);
+  let email = orderPayload?.email ?? null;
+
+  if (tags.length === 0) tags = order.tags;
+  if (!email) email = order.email;
+
+  for (const statusAction of STATUS_EMAIL_ACTIONS) {
+    const result = await sendStatusEmailIfNeeded(admin, {
+      orderId: orderGid,
+      email,
+      tags,
+      statusAction,
+      shop,
+      workflowTags: settings.preorderTags,
+    });
+
+    if (!result.ok) {
+      console.error("status email webhook failed", {
+        orderGid,
+        statusAction,
+        error: result.error,
+      });
+    }
+  }
+}
+
 export async function processShippingPaidTagging(
   admin: AdminGraphql,
   orderPayload: OrderWebhookPayload,
@@ -130,8 +244,6 @@ export async function processShippingPaidTagging(
 
   const settings = await getShopSettings(shop);
   const shippingPaidTag = settings.preorderTags.shippingPaidTag;
-  const preorderProductTag = settings.preorderTags.preorderProductTag;
-
   const linkedOrderIds = extractLinkedOrderIdsFromPayload(orderPayload);
   if (linkedOrderIds.length === 0) {
     console.log("No linked original orders found on paid invoice:", invoiceId);
@@ -152,14 +264,13 @@ export async function processShippingPaidTagging(
     }
 
     try {
-      const eligible = await orderHasConfiguredProductTag(
-        admin,
-        linkedOrderGid,
-        preorderProductTag,
-      );
-      if (!eligible) {
+      const linkedOrder = await fetchOrderForClassification(admin, linkedOrderGid);
+      if (
+        !linkedOrder ||
+        classifyOrder(linkedOrder, settings.preorderTags) === "india_direct"
+      ) {
         console.log(
-          `skipped tagging order ${linkedId} (missing product tag ${preorderProductTag})`,
+          `skipped tagging order ${linkedId} (India Direct or not found)`,
         );
         continue;
       }
@@ -256,14 +367,13 @@ export async function processPushedToNextWeekendVoid(
   }
 
   try {
-    const eligible = await orderHasConfiguredProductTag(
-      admin,
-      orderGid,
-      settings.preorderTags.preorderProductTag,
-    );
-    if (!eligible) {
+    const order = await fetchOrderForClassification(admin, orderGid);
+    if (
+      !order ||
+      classifyOrder(order, settings.preorderTags) === "india_direct"
+    ) {
       console.log(
-        "pushed-to-next-weekend void skipped; missing configured product tag",
+        "pushed-to-next-weekend void skipped; India Direct or not found",
         orderGid,
       );
       return;

@@ -2,19 +2,16 @@ import {
   hasTag,
   isSkirtDeposit,
   normalizeTags,
-  TAGS,
   type StatusAction,
-  type StatusEmailAction,
 } from "./tags";
-import type {
-  PreorderWorkflowLabels,
-  PreorderWorkflowTags,
-} from "./klaviyo-settings.server";
-import { sendStatusEmailIfNeeded } from "./send-status-email.server";
+import type { PreorderWorkflowTags } from "./klaviyo-settings.server";
 import { isAllowedShippingCountry, type LineItemInfo } from "./cycle-shared.server";
 import {
-  countConfiguredProductShippingItems,
-  hasConfiguredProductTag,
+  classifyOrder,
+  countPreorderProductShippingItems,
+  countRtwShippingItems,
+  hasAnyPreorderProductTag,
+  hasIndiaDirectSignal,
 } from "./product-eligibility.server";
 
 export type ShippingOrder = {
@@ -153,9 +150,21 @@ async function fetchOrdersByQuery(
 
 function hasPreorderProductTag(
   order: ShippingOrder,
-  preorderProductTag: string,
+  workflowTags: PreorderWorkflowTags,
 ): boolean {
-  return hasConfiguredProductTag(order, preorderProductTag);
+  return hasAnyPreorderProductTag(order, workflowTags);
+}
+
+function isThursdayCandidateOrder(
+  order: ShippingOrder,
+  workflowTags: PreorderWorkflowTags,
+): boolean {
+  const classification = classifyOrder(order, workflowTags);
+  if (classification === "india_direct") return false;
+  if (classification === "preorder") {
+    return countPreorderProductShippingItems(order, workflowTags) > 0;
+  }
+  return countRtwShippingItems(order) > 0;
 }
 
 /**
@@ -190,7 +199,7 @@ export async function fetchAwaitingReadinessOrders(
   ]);
 
   const awaitingFiltered = awaiting.filter((order) => {
-    if (!hasPreorderProductTag(order, workflowTags.preorderProductTag)) {
+    if (!hasPreorderProductTag(order, workflowTags)) {
       return false;
     }
     if (order.isSkirtDeposit) return true;
@@ -203,7 +212,7 @@ export async function fetchAwaitingReadinessOrders(
     byId.set(order.id, order);
   }
   for (const order of completed) {
-    if (!hasPreorderProductTag(order, workflowTags.preorderProductTag)) {
+    if (!hasPreorderProductTag(order, workflowTags)) {
       continue;
     }
     if (!byId.has(order.id)) {
@@ -251,12 +260,27 @@ export async function fetchShippingWorkflowSummary(
     partialTag: workflowTags.partialTag,
   };
 
-  const [readyToShipOrders, awaitingPaymentOrders] = await Promise.all([
+  const [preorderReadyOrders, rtwReadyOrders, awaitingPaymentOrders] =
+    await Promise.all([
     fetchOrdersByQuery(
       admin,
       [
         "status:open",
-        `tag:${workflowTags.readyToShipTag}`,
+        `tag:${workflowTags.pieceMadeTag}`,
+        `tag:${workflowTags.leavingForCanadaTag}`,
+        `tag:${workflowTags.arrivedInCanadaTag}`,
+        `-tag:${workflowTags.shippingPaidTag}`,
+        `-tag:${workflowTags.holdForNextCycleTag}`,
+      ].join(" AND "),
+      250,
+      skirtDepositTags,
+    ),
+    fetchOrdersByQuery(
+      admin,
+      [
+        "status:open",
+        "financial_status:paid",
+        "fulfillment_status:unfulfilled",
         `-tag:${workflowTags.shippingPaidTag}`,
         `-tag:${workflowTags.holdForNextCycleTag}`,
       ].join(" AND "),
@@ -275,12 +299,17 @@ export async function fetchShippingWorkflowSummary(
     ),
   ]);
 
+  const readyById = new Map<string, ShippingOrder>();
+  for (const order of [...preorderReadyOrders, ...rtwReadyOrders]) {
+    if (isThursdayCandidateOrder(order, workflowTags)) {
+      readyById.set(order.id, order);
+    }
+  }
+
   return {
-    readyToShipCount: readyToShipOrders.filter((order) =>
-      hasPreorderProductTag(order, workflowTags.preorderProductTag),
-    ).length,
+    readyToShipCount: readyById.size,
     awaitingPaymentCount: awaitingPaymentOrders.filter((order) =>
-      hasPreorderProductTag(order, workflowTags.preorderProductTag),
+      isThursdayCandidateOrder(order, workflowTags),
     ).length,
     nextShippingLabel: formatNextShippingLabel(),
   };
@@ -305,7 +334,7 @@ export async function fetchShippingPaidAlerts(
     skirtDepositTags,
   );
   const eligiblePaidOrders = paidOrders.filter((order) =>
-    hasPreorderProductTag(order, workflowTags.preorderProductTag),
+    isThursdayCandidateOrder(order, workflowTags),
   );
 
   const paidEmails = new Set(
@@ -347,7 +376,7 @@ export async function fetchShippingPaidAlerts(
       const latestPaidAt = latestPaidByEmail.get(key);
       if (!latestPaidAt) return false;
       if (order.createdAt <= latestPaidAt) return false;
-      if (!hasPreorderProductTag(order, workflowTags.preorderProductTag)) {
+      if (!isThursdayCandidateOrder(order, workflowTags)) {
         return false;
       }
 
@@ -356,15 +385,7 @@ export async function fetchShippingPaidAlerts(
 
       if (!isAllowedShippingCountry(order, workflowTags)) return false;
 
-      if (hasTag(order.tags, TAGS.INDIA_DIRECT)) return false;
-      if (
-        countConfiguredProductShippingItems(
-          order,
-          workflowTags.preorderProductTag,
-        ) < 1
-      ) {
-        return false;
-      }
+      if (hasIndiaDirectSignal(order, workflowTags)) return false;
 
       return true;
     })
@@ -457,65 +478,33 @@ async function getOrderSnapshot(
   };
 }
 
-async function sendStatusEmailNow(
-  admin: AdminGraphql,
-  options: {
-    orderId: string;
-    email: string | null;
-    tagsAfterUpdate: string[];
-    statusAction: StatusEmailAction;
-    shop: string;
-    workflowTags: PreorderWorkflowTags;
-  },
-): Promise<string> {
-  const result = await sendStatusEmailIfNeeded(admin, {
-    orderId: options.orderId,
-    email: options.email,
-    tags: options.tagsAfterUpdate,
-    statusAction: options.statusAction,
-    shop: options.shop,
-    workflowTags: options.workflowTags,
-  });
-
-  if (!result.ok) return `email failed: ${result.error}`;
-  if (result.skipped) return "email already sent or unavailable";
-  return "Klaviyo email sent";
-}
-
 export async function applyStatusAction(
   admin: AdminGraphql,
   orderId: string,
   action: StatusAction,
   options: {
     workflowTags: PreorderWorkflowTags;
-    labels: PreorderWorkflowLabels;
-    shop: string;
   },
 ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
-  const { workflowTags, labels, shop } = options;
+  const { workflowTags } = options;
   const snapshot = await getOrderSnapshot(admin, orderId);
   if (!snapshot) {
     return { ok: false, error: "Order not found" };
   }
-  if (!hasConfiguredProductTag(snapshot, workflowTags.preorderProductTag)) {
+  if (
+    !hasAnyPreorderProductTag(snapshot, workflowTags) &&
+    !isThursdayCandidateOrder(
+      { ...snapshot, id: orderId } as ShippingOrder,
+      workflowTags,
+    )
+  ) {
     return {
       ok: false,
-      error: `Order is not eligible because no purchased product has the ${workflowTags.preorderProductTag} tag`,
+      error: "Order is not eligible for this app workflow",
     };
   }
 
   const { tags } = snapshot;
-
-  if (action === "deposit_fulfilled") {
-    if (!isSkirtDeposit(tags, workflowTags.groupTag, workflowTags.partialTag)) {
-      return { ok: false, error: "Order is not a skirt deposit (group + partial)" };
-    }
-    const result = await addOrderTags(admin, orderId, [
-      workflowTags.depositFulfilledTag,
-    ]);
-    if (!result.ok) return result;
-    return { ok: true, message: "Deposit marked fulfilled" };
-  }
 
   if (action === "hold_for_next_cycle") {
     if (hasTag(tags, workflowTags.holdForNextCycleTag)) {
@@ -528,88 +517,9 @@ export async function applyStatusAction(
     return { ok: true, message: "Held for next Thursday" };
   }
 
-  if (action === "piece_made") {
-    if (hasTag(tags, workflowTags.pieceMadeTag)) {
-      return { ok: false, error: `${labels.pieceMade} already marked` };
-    }
-    const tagResult = await addOrderTags(admin, orderId, [
-      workflowTags.pieceMadeTag,
-    ]);
-    if (!tagResult.ok) return tagResult;
-    const emailStatus = await sendStatusEmailNow(admin, {
-      orderId,
-      email: snapshot.email,
-      tagsAfterUpdate: [...tags, workflowTags.pieceMadeTag],
-      statusAction: "piece_made",
-      shop,
-      workflowTags,
-    });
-    return {
-      ok: true,
-      message: `${labels.pieceMade} tagged (${emailStatus})`,
-    };
-  }
-
-  if (action === "leaving_for_canada") {
-    if (!hasTag(tags, workflowTags.pieceMadeTag)) {
-      return { ok: false, error: `Complete ${labels.pieceMade} first` };
-    }
-    if (hasTag(tags, workflowTags.leavingForCanadaTag)) {
-      return {
-        ok: false,
-        error: `${labels.leavingForCanada} already marked`,
-      };
-    }
-    const tagResult = await addOrderTags(admin, orderId, [
-      workflowTags.leavingForCanadaTag,
-    ]);
-    if (!tagResult.ok) return tagResult;
-    const emailStatus = await sendStatusEmailNow(admin, {
-      orderId,
-      email: snapshot.email,
-      tagsAfterUpdate: [...tags, workflowTags.leavingForCanadaTag],
-      statusAction: "leaving_for_canada",
-      shop,
-      workflowTags,
-    });
-    return {
-      ok: true,
-      message: `${labels.leavingForCanada} tagged (${emailStatus})`,
-    };
-  }
-
-  if (action === "arrived_in_canada") {
-    if (!hasTag(tags, workflowTags.leavingForCanadaTag)) {
-      return {
-        ok: false,
-        error: `Complete ${labels.leavingForCanada} first`,
-      };
-    }
-    if (hasTag(tags, workflowTags.arrivedInCanadaTag)) {
-      return { ok: false, error: `${labels.arrivedInCanada} already marked` };
-    }
-    const tagResult = await addOrderTags(admin, orderId, [
-      workflowTags.arrivedInCanadaTag,
-      workflowTags.readyToShipTag,
-    ]);
-    if (!tagResult.ok) return tagResult;
-    const emailStatus = await sendStatusEmailNow(admin, {
-      orderId,
-      email: snapshot.email,
-      tagsAfterUpdate: [
-        ...tags,
-        workflowTags.arrivedInCanadaTag,
-        workflowTags.readyToShipTag,
-      ],
-      statusAction: "arrived_in_canada",
-      shop,
-      workflowTags,
-    });
-    return {
-      ok: true,
-      message: `${labels.arrivedInCanada} + ready-to-ship tagged (${emailStatus})`,
-    };
-  }
-
-  return { ok: false, error: "Unknown action" };
+  return {
+    ok: false,
+    error:
+      "Status tags are added in Shipping Manager. This app only listens for those tags and sends Klaviyo emails.",
+  };
 }

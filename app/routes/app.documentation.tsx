@@ -102,60 +102,55 @@ export default function DocumentationPage() {
         <s-stack gap="base">
           <s-banner tone="info" heading="What this tab does">
             <s-paragraph>
-              This tab is the daily preorder readiness board. It shows only
-              open orders that contain a product with the configured Shopify
-              product tag. The default product tag is{" "}
-              <s-text type="strong">Web Saree</s-text>.
+              This tab is a read-only view. Status buttons live in the Shipping
+              Manager app. This app does not add Piece Made, Leaving for Canada,
+              or Arrived in Canada tags from this page.
             </s-paragraph>
           </s-banner>
           <s-box padding="base" borderWidth="base" borderRadius="base">
             <s-stack gap="small">
-              <s-text type="strong">Which orders appear here</s-text>
+              <s-text type="strong">How status emails are triggered</s-text>
               <s-unordered-list>
                 <s-list-item>
-                  The order must include at least one product with the configured
-                  product tag, normally Web Saree.
+                  Staff clicks the status button in the Shipping Manager app.
                 </s-list-item>
                 <s-list-item>
-                  Orders without that product tag are hidden and are not handled
-                  by this app.
+                  Shipping Manager adds the matching Shopify order tag:
+                  piece-made-notified, leaving-for-canada-notified, or
+                  arrived-in-canada-notified.
                 </s-list-item>
                 <s-list-item>
-                  The search box only searches inside the eligible orders shown
-                  on this tab.
+                  This app listens for the tag, sends the matching Klaviyo
+                  event, then adds the matching email-sent tag so it is not sent
+                  again.
                 </s-list-item>
               </s-unordered-list>
             </s-stack>
           </s-box>
           <s-box padding="base" borderWidth="base" borderRadius="base">
             <s-stack gap="small">
-              <s-text type="strong">Button flow</s-text>
+              <s-text type="strong">Preorder classification</s-text>
               <s-ordered-list>
                 <s-list-item>
-                  Click <s-text type="strong">Piece Made</s-text> when the
-                  ordered piece is ready from production. The app adds the Piece
-                  Made order tag and immediately sends the Piece Made Klaviyo
-                  event.
+                  An order is Preorder when any line item has product tag group,
+                  dispatch skirt, or the configured preorder product tag
+                  normally Web Saree.
                 </s-list-item>
                 <s-list-item>
-                  Click <s-text type="strong">Leaving for Canada</s-text> after
-                  Piece Made. The app adds the Leaving for Canada order tag and
-                  immediately sends the Leaving for Canada Klaviyo event.
+                  An order is RTW when it is not India Direct and does not have
+                  preorder product tags.
                 </s-list-item>
                 <s-list-item>
-                  Click <s-text type="strong">Arrived in Canada</s-text> after
-                  Leaving for Canada. The app adds the Arrived in Canada tag,
-                  adds Ready to Ship, and immediately sends the Arrived in Canada
-                  Klaviyo event.
+                  An order is India Direct when any line item has product tag
+                  india or the order has order tag india-direct.
                 </s-list-item>
               </s-ordered-list>
             </s-stack>
           </s-box>
           <s-banner tone="warning" heading="Good to know">
             <s-paragraph>
-              Colored badges mean the step is already completed. Badges do not
-              resend emails. Emails are sent when the active status button is
-              clicked, and duplicate sends are prevented with email-sent tags.
+              This app should not duplicate Shipping Manager buttons. It only
+              reacts after the tags already exist on the Shopify order.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -170,16 +165,17 @@ export default function DocumentationPage() {
           <s-banner tone="info" heading="What this tab does">
             <s-paragraph>
               This tab is a Klaviyo backup tool. Normal status emails are sent
-              immediately from the Tab 01 buttons, but this tab can find and
-              retry any status email that did not finish.
+              by the orders/updated webhook when Shipping Manager adds a status
+              tag. This tab can preview or retry any status email that did not
+              finish.
             </s-paragraph>
           </s-banner>
           <s-box padding="base" borderWidth="base" borderRadius="base">
             <s-stack gap="small">
               <s-text type="strong">How pending emails are detected</s-text>
               <s-paragraph>
-                The app checks Web Saree orders where a status tag exists but
-                the matching email-sent tag is still missing. That means the
+                The app checks preorder-tagged orders where a status tag exists
+                but the matching email-sent tag is still missing. That means the
                 order needs a Klaviyo event retry.
               </s-paragraph>
             </s-stack>
@@ -218,9 +214,9 @@ export default function DocumentationPage() {
         <s-stack gap="base">
           <s-banner tone="success" heading="What this tab does">
             <s-paragraph>
-              This tab creates shipping payment invoices for eligible Web Saree
-              orders. Orders for the same customer are combined into one Shopify
-              draft shipping invoice.
+              This tab creates shipping payment invoices for eligible RTW and
+              Preorder orders. Orders for the same customer are combined into
+              one Shopify draft shipping invoice.
             </s-paragraph>
           </s-banner>
           <s-box padding="base" borderWidth="base" borderRadius="base">
@@ -228,17 +224,19 @@ export default function DocumentationPage() {
               <s-text type="strong">Which orders qualify</s-text>
               <s-unordered-list>
                 <s-list-item>
-                  Web Saree preorder orders must be marked Arrived in Canada and
-                  Ready to Ship.
+                  Preorder orders qualify only when all three status tags are
+                  present: piece-made-notified, leaving-for-canada-notified, and
+                  arrived-in-canada-notified.
                 </s-list-item>
                 <s-list-item>
-                  Web Saree ready-to-wear orders qualify when they are paid and
-                  still unfulfilled.
+                  RTW orders qualify directly when they are not India Direct.
+                  No three-step process and no ready-to-ship tag is required.
                 </s-list-item>
                 <s-list-item>
-                  Orders are excluded when they are Saskatoon, India-direct,
-                  outside the allowed shipping countries, already shipping-paid,
-                  or already thursday-email-sent.
+                  India Direct orders never qualify. The app also excludes
+                  Saskatoon, unsupported shipping countries, already
+                  shipping-paid orders, and orders already marked
+                  thursday-email-sent.
                 </s-list-item>
               </s-unordered-list>
             </s-stack>
@@ -265,7 +263,7 @@ export default function DocumentationPage() {
               <s-unordered-list>
                 <s-list-item>
                   <s-text type="strong">Dry Run on</s-text>: preview only. It
-                  shows customer email, order numbers, Web Saree item count, and
+                  shows customer email, order numbers, item count, and
                   shipping amount. No invoice, email, or tag changes are made.
                 </s-list-item>
                 <s-list-item>
@@ -280,10 +278,11 @@ export default function DocumentationPage() {
           </s-box>
           <s-banner tone="warning" heading="Shipping calculation">
             <s-paragraph>
-              The item count uses only Web Saree tagged line items that require
-              shipping. The shipping amount is read from Shopify Shipping
-              profiles for the customer country/province and item quantity. No
-              hardcoded fallback rate is used.
+              For Preorder orders, item count uses preorder-tagged line items
+              that require shipping. For RTW orders, item count uses physical
+              line items that require shipping. The shipping amount is read from
+              Shopify Shipping profiles for the customer country/province and
+              item quantity. No hardcoded fallback rate is used.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -298,16 +297,16 @@ export default function DocumentationPage() {
           <s-banner tone="info" heading="What this tab does">
             <s-paragraph>
               This tab catches the special case where a customer already paid a
-              Thursday shipping invoice, then later buys another Web Saree item.
+              Thursday shipping invoice, then later buys another eligible item.
             </s-paragraph>
           </s-banner>
           <s-box padding="base" borderWidth="base" borderRadius="base">
             <s-stack gap="small">
               <s-text type="strong">Why an alert appears</s-text>
               <s-paragraph>
-                The app looks for a customer who has an eligible Web Saree order
+                The app looks for a customer who has an eligible order
                 already tagged shipping-paid. If the same customer places a
-                newer eligible Web Saree order, the app shows that newer order
+                newer eligible order, the app shows that newer order
                 here for staff review.
               </s-paragraph>
             </s-stack>
@@ -349,7 +348,7 @@ export default function DocumentationPage() {
           <s-banner tone="warning" heading="What this tab does">
             <s-paragraph>
               This tab is the backup reset for unpaid Thursday shipping
-              invoices. It prepares unpaid Web Saree shipping invoices to be
+              invoices. It prepares unpaid shipping invoices to be
               tried again in the next weekly cycle.
             </s-paragraph>
           </s-banner>
@@ -400,8 +399,8 @@ export default function DocumentationPage() {
       content: (
         <s-ordered-list>
           <s-list-item>
-            Tab 01 moves Web Saree preorder status and triggers customer status
-            emails.
+            Shipping Manager adds status tags. This app listens for those tags
+            and triggers customer status emails.
           </s-list-item>
           <s-list-item>
             Tab 02 is only a backup for pending Klaviyo status emails.
@@ -411,7 +410,7 @@ export default function DocumentationPage() {
             email.
           </s-list-item>
           <s-list-item>
-            Tab 04 handles new Web Saree orders bought after shipping was
+            Tab 04 handles new eligible orders bought after shipping was
             already paid.
           </s-list-item>
           <s-list-item>
@@ -428,7 +427,7 @@ export default function DocumentationPage() {
       content: (
         <s-paragraph>
           Open <s-link href="/app/settings">Settings</s-link> to change product
-          tag, order tags, button labels, Klaviyo API key, Klaviyo template IDs,
+          tag, order tags, Klaviyo API key, Klaviyo template IDs,
           and allowed shipping countries. Product tag default is{" "}
           <s-text type="strong">Web Saree</s-text>.
         </s-paragraph>
@@ -441,8 +440,8 @@ export default function DocumentationPage() {
       content: (
         <s-unordered-list>
           <s-list-item>
-            If an order is not showing, check the purchased product has the
-            configured product tag.
+            If an order is not showing, check whether it matches the expected
+            classification: Preorder, RTW, or India Direct.
           </s-list-item>
           <s-list-item>
             If email event was sent but customer did not receive email, check
@@ -488,10 +487,11 @@ export default function DocumentationPage() {
             </div>
             <s-box padding="base">
               <s-paragraph>
-                This app is built for orders where the customer purchased a
-                product with the configured Shopify product tag. The default tag
-                is <s-text type="strong">Web Saree</s-text>. Orders without this
-                product tag are not shown or processed by the app.
+                This app has two jobs: listen for Shipping Manager status tags
+                and send Klaviyo status emails, then run the Thursday shipping
+                invoice cycle. Orders are classified as Preorder, RTW, or India
+                Direct using product tags and order tags. India Direct orders
+                are always excluded from the Thursday cycle.
               </s-paragraph>
             </s-box>
           </s-box>

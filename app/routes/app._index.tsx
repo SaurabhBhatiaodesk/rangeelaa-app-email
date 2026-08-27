@@ -14,7 +14,6 @@ import {
 import { SaveBar, useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
-import { PreorderStatusButtons } from "../components/PreorderStatusButtons";
 import { ShippingPaidAlert } from "../components/ShippingPaidAlert";
 import {
   applyStatusAction,
@@ -213,8 +212,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const shopSettings = await getShopSettings(session.shop);
   return applyStatusAction(admin, orderId, actionName, {
     workflowTags: shopSettings.preorderTags,
-    labels: shopSettings.preorderLabels,
-    shop: session.shop,
   });
 };
 
@@ -539,7 +536,7 @@ export default function ShippingManagerIndex() {
           </span>
           </s-stack>
           <s-badge tone="info" color="strong">
-            Web Saree tag based app (preorder)
+            RTW + Preorder automation
           </s-badge>
         </s-stack>
       </s-box>
@@ -685,11 +682,10 @@ export default function ShippingManagerIndex() {
                   Shipping workflow
                 </span>
                 <s-paragraph>
-                  Manage preorders, status emails, Thursday invoices,
-                  shipping-paid alerts, and Friday reset. Use the steps below in
-                  order — when you mark a preorder step, the matching Shopify
-                  tag is added and Klaviyo sends the customer email. Tags,
-                  button labels, and template IDs are configured in{" "}
+                  Listen for Shipping Manager status tags, send Klaviyo status
+                  emails, create Thursday invoices, handle shipping-paid alerts,
+                  and run the Friday reset. Tags and template IDs are configured
+                  in{" "}
                   <s-link href="/app/settings">Settings</s-link>.
                 </s-paragraph>
               </s-stack>
@@ -701,7 +697,7 @@ export default function ShippingManagerIndex() {
       <s-box paddingBlockEnd="large">
         <s-stack direction="inline" gap="small" alignItems="center">
           <s-badge tone="info" color="strong">
-            {data.workflowSummary.readyToShipCount} orders ready to ship
+            {data.workflowSummary.readyToShipCount} orders ready for invoice
           </s-badge>
           <s-badge tone="warning" color="strong">
             {data.workflowSummary.awaitingPaymentCount} awaiting payment
@@ -719,23 +715,6 @@ export default function ShippingManagerIndex() {
             Reopen or reinstall the app and approve the{" "}
             <s-text type="strong">read_shipping</s-text> permission if prompted.
           </s-paragraph>
-        </s-banner>
-      )}
-
-      {tab === "preorders" && (
-        <s-banner heading="Preorder status workflow" tone="success">
-          Update each preorder in order: {data.preorderLabels.pieceMade} →{" "}
-          {data.preorderLabels.leavingForCanada} →{" "}
-          {data.preorderLabels.arrivedInCanada}. Completed steps show as green
-          success badges. Skirt deposits use{" "}
-          {data.preorderLabels.depositFulfilled}.
-          <s-button
-            slot="secondary-actions"
-            variant="secondary"
-            href="/app/settings"
-          >
-            Edit button labels &amp; order tags
-          </s-button>
         </s-banner>
       )}
 
@@ -801,7 +780,6 @@ export default function ShippingManagerIndex() {
                       Customer
                     </s-table-header>
                     <s-table-header listSlot="labeled">Type</s-table-header>
-                    <s-table-header listSlot="inline">Actions</s-table-header>
                   </s-table-header-row>
                   <s-table-body>
                     {pagedPreorders.map((order) => (
@@ -883,15 +861,6 @@ export default function ShippingManagerIndex() {
                           ) : (
                             <s-badge tone="neutral">Preorder</s-badge>
                           )}
-                        </s-table-cell>
-                        <s-table-cell>
-                          <PreorderStatusButtons
-                            order={order}
-                            busyAction={busyAction}
-                            onAction={runAction}
-                            labels={data.preorderLabels}
-                            workflowTags={data.preorderTags}
-                          />
                         </s-table-cell>
                       </s-table-row>
                     ))}
@@ -1003,8 +972,8 @@ export default function ShippingManagerIndex() {
             </s-box>
 
             <s-banner heading="Tags, labels &amp; templates" tone="info">
-              Configure Shopify order tags, button labels, and Klaviyo template
-              IDs on the Settings page.
+              Configure Shopify order tags and Klaviyo template IDs on the
+              Settings page.
               <s-button
                 slot="secondary-actions"
                 variant="secondary"
@@ -1216,9 +1185,14 @@ export default function ShippingManagerIndex() {
                         <s-list-item>
                           <s-unordered-list>
                             <s-list-item>
+                              piece-made-notified
+                            </s-list-item>
+                            <s-list-item>
+                              leaving-for-canada-notified
+                            </s-list-item>
+                            <s-list-item>
                               arrived-in-canada-notified
                             </s-list-item>
-                            <s-list-item>ready-to-ship</s-list-item>
                           </s-unordered-list>
                         </s-list-item>
                         <s-list-item>
@@ -1276,7 +1250,7 @@ export default function ShippingManagerIndex() {
                         <s-paragraph>
                           Use these manual tags only for isolated testing. In
                           the real workflow, status and readiness tags should
-                          normally come from the app buttons or the configured
+                          normally come from Shipping Manager or the configured
                           automation.
                         </s-paragraph>
                       </s-banner>

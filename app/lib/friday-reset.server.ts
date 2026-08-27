@@ -4,7 +4,11 @@ import {
   graphqlJson,
 } from "./cycle-shared.server";
 import { getShopSettings } from "./klaviyo-settings.server";
-import { hasConfiguredProductTag } from "./product-eligibility.server";
+import {
+  classifyOrder,
+  countPreorderProductShippingItems,
+  countRtwShippingItems,
+} from "./product-eligibility.server";
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
@@ -209,7 +213,6 @@ export async function runFridayReset(
   const thursdayEmailSentTag = settings.preorderTags.thursdayEmailSentTag;
   const shippingPaidTag = settings.preorderTags.shippingPaidTag;
   const pushedToNextWeekendTag = settings.preorderTags.pushedToNextWeekendTag;
-  const preorderProductTag = settings.preorderTags.preorderProductTag;
 
   const json = await graphqlJson(
     admin,
@@ -224,6 +227,8 @@ export async function runFridayReset(
               lineItems(first: 250) {
                 edges {
                   node {
+                    quantity
+                    requiresShipping
                     product {
                       tags
                     }
@@ -254,7 +259,11 @@ export async function runFridayReset(
       tags: string[] | string;
       lineItems?: {
         edges?: Array<{
-          node?: { product?: { tags?: string[] | string } | null };
+          node?: {
+            quantity?: number;
+            requiresShipping?: boolean;
+            product?: { tags?: string[] | string } | null;
+          };
         }>;
       };
       metafield: { id?: string; value?: string } | null;
@@ -264,9 +273,27 @@ export async function runFridayReset(
     if (!hasTag(tags, thursdayEmailSentTag)) continue;
     if (hasTag(tags, shippingPaidTag)) continue;
     const lineItems = (order.lineItems?.edges ?? []).map((lineEdge) => ({
+      quantity: Number(lineEdge.node?.quantity || 0),
+      requiresShipping: lineEdge.node?.requiresShipping !== false,
       productTags: normalizeTags(lineEdge.node?.product?.tags),
     }));
-    if (!hasConfiguredProductTag({ lineItems }, preorderProductTag)) continue;
+    const classification = classifyOrder(
+      { tags, lineItems },
+      settings.preorderTags,
+    );
+    if (classification === "india_direct") continue;
+    if (
+      classification === "preorder" &&
+      countPreorderProductShippingItems(
+        { tags, lineItems },
+        settings.preorderTags,
+      ) < 1
+    ) {
+      continue;
+    }
+    if (classification === "rtw" && countRtwShippingItems({ lineItems }) < 1) {
+      continue;
+    }
 
     ordersProcessed += 1;
     const draftId = order.metafield?.value;

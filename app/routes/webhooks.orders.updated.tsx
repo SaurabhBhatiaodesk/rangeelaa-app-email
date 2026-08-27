@@ -3,6 +3,7 @@ import { authenticate } from "../shopify.server";
 import {
   processPushedToNextWeekendVoid,
   processShippingPaidTagging,
+  processStatusEmailTags,
 } from "../lib/orders-updated-webhook.server";
 
 /**
@@ -18,6 +19,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!admin) {
     console.error(`[orders/updated] No admin API client available for ${shop}`);
     return new Response();
+  }
+
+  try {
+    await processStatusEmailTags(admin, payload, shop);
+  } catch (error) {
+    console.error(`[orders/updated] status email tagging failed:`, error);
   }
 
   try {

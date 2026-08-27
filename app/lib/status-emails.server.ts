@@ -10,7 +10,8 @@ import {
   type AdminGraphql,
   graphqlJson,
 } from "./cycle-shared.server";
-import { hasConfiguredProductTag } from "./product-eligibility.server";
+import { classifyOrder } from "./product-eligibility.server";
+import type { PreorderWorkflowTags } from "./klaviyo-settings.server";
 
 /**
  * Client Task 1 — Heroku poller (NOT Shopify Flow).
@@ -71,7 +72,7 @@ async function fetchOrdersNeedingEmail(
   admin: AdminGraphql,
   statusTag: string,
   sentTag: string,
-  preorderProductTag: string,
+  workflowTags: PreorderWorkflowTags,
 ) {
   const query = `tag:${statusTag} AND -tag:${sentTag}`;
   const json = await graphqlJson(
@@ -126,8 +127,8 @@ async function fetchOrdersNeedingEmail(
         })),
       };
     },
-  ).filter((order: { lineItems: Array<{ productTags: string[] }> }) =>
-    hasConfiguredProductTag(order, preorderProductTag),
+  ).filter((order: { tags: string[]; lineItems: Array<{ productTags: string[] }> }) =>
+    classifyOrder(order, workflowTags) === "preorder",
   );
 }
 
@@ -158,7 +159,7 @@ export async function runStatusEmailPoller(
       admin,
       statusTag,
       sentTag,
-      settings.preorderTags.preorderProductTag,
+      settings.preorderTags,
     );
 
     for (const order of orders) {

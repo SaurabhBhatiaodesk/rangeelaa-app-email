@@ -1,10 +1,9 @@
-import { TAGS, hasTag, normalizeTags } from "./tags";
+import { hasTag, normalizeTags } from "./tags";
 import { resolveShippingRateFromProfiles } from "./shipping-rates";
 import {
   type AdminGraphql,
   type CycleGateTags,
   type CycleOrder,
-  type ItemRoutingTags,
   type LineItemInfo,
   graphqlJson,
   isAllowedShippingCountry,
@@ -17,8 +16,9 @@ import {
   type PreorderWorkflowTags,
 } from "./klaviyo-settings.server";
 import {
-  countConfiguredProductShippingItems,
-  hasConfiguredProductTag,
+  classifyOrder,
+  countPreorderProductShippingItems,
+  countRtwShippingItems,
 } from "./product-eligibility.server";
 
 const META_NAMESPACE = "rangeela";
@@ -151,29 +151,28 @@ async function fetchCycleOrders(
 
 function isPool1Preorder(
   order: CycleOrder,
+  pieceMadeTag: string,
+  leavingForCanadaTag: string,
   arrivedInCanadaTag: string,
-  readyToShipTag: string,
-  preorderProductTag: string,
   gateTags: CycleGateTags,
-  routingTags: ItemRoutingTags,
+  routingTags: PreorderWorkflowTags,
 ): boolean {
-  if (!hasPreorderProductTag(order, preorderProductTag)) return false;
+  if (classifyOrder(order, routingTags) !== "preorder") return false;
+  if (!hasTag(order.tags, pieceMadeTag)) return false;
+  if (!hasTag(order.tags, leavingForCanadaTag)) return false;
   if (!hasTag(order.tags, arrivedInCanadaTag)) return false;
-  if (!hasTag(order.tags, readyToShipTag)) return false;
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
-  if (isIndiaDirect(order)) return false;
-  return countTaggedBillableItemCount(order, preorderProductTag) > 0;
+  return countPreorderProductShippingItems(order, routingTags) > 0;
 }
 
 function isPool2Rtw(
   order: CycleOrder,
-  preorderProductTag: string,
   gateTags: CycleGateTags,
-  routingTags: ItemRoutingTags,
+  routingTags: PreorderWorkflowTags,
 ): boolean {
-  if (!hasPreorderProductTag(order, preorderProductTag)) return false;
+  if (classifyOrder(order, routingTags) !== "rtw") return false;
   const financial = (order.displayFinancialStatus || "").toUpperCase();
   const fulfillment = (order.displayFulfillmentStatus || "").toUpperCase();
   if (financial !== "PAID") return false;
@@ -181,8 +180,7 @@ function isPool2Rtw(
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
-  if (isIndiaDirect(order)) return false;
-  if (countTaggedBillableItemCount(order, preorderProductTag) < 1) {
+  if (countRtwShippingItems(order) < 1) {
     return false;
   }
 
@@ -191,28 +189,14 @@ function isPool2Rtw(
 
 function billableItemCount(
   order: CycleOrder,
-  preorderProductTag: string,
+  workflowTags: PreorderWorkflowTags,
 ): number {
-  if (isIndiaDirect(order)) return 0;
-  return countTaggedBillableItemCount(order, preorderProductTag);
-}
-
-function countTaggedBillableItemCount(
-  order: CycleOrder,
-  preorderProductTag: string,
-): number {
-  return countConfiguredProductShippingItems(order, preorderProductTag);
-}
-
-function hasPreorderProductTag(
-  order: CycleOrder,
-  preorderProductTag: string,
-): boolean {
-  return hasConfiguredProductTag(order, preorderProductTag);
-}
-
-function isIndiaDirect(order: CycleOrder): boolean {
-  return hasTag(order.tags, TAGS.INDIA_DIRECT);
+  const classification = classifyOrder(order, workflowTags);
+  if (classification === "india_direct") return 0;
+  if (classification === "preorder") {
+    return countPreorderProductShippingItems(order, workflowTags);
+  }
+  return countRtwShippingItems(order);
 }
 
 export type ThursdayCustomerResult = {
@@ -503,6 +487,8 @@ export async function runThursdayCycle(
   const dryRun = Boolean(options.dryRun);
   const settings = await getShopSettings(options.shop);
   const workflowTags: PreorderWorkflowTags = settings.preorderTags;
+  const pieceMadeTag = workflowTags.pieceMadeTag;
+  const leavingForCanadaTag = workflowTags.leavingForCanadaTag;
   const arrivedInCanadaTag = workflowTags.arrivedInCanadaTag;
   const thursdayTemplateId = settings.klaviyoTemplates.thursdayTemplateId;
   const klaviyoApiKey = settings.klaviyoApiKey;
@@ -517,8 +503,9 @@ export async function runThursdayCycle(
       admin,
       [
         "status:open",
+        `tag:${pieceMadeTag}`,
+        `tag:${leavingForCanadaTag}`,
         `tag:${arrivedInCanadaTag}`,
-        `tag:${workflowTags.readyToShipTag}`,
       ].join(" AND "),
     ),
     fetchCycleOrders(
@@ -534,15 +521,15 @@ export async function runThursdayCycle(
   const pool1 = pool1Raw.filter((order) =>
     isPool1Preorder(
       order,
+      pieceMadeTag,
+      leavingForCanadaTag,
       arrivedInCanadaTag,
-      workflowTags.readyToShipTag,
-      workflowTags.preorderProductTag,
       gateTags,
       workflowTags,
     ),
   );
   const pool2 = pool2Raw.filter((order) =>
-    isPool2Rtw(order, workflowTags.preorderProductTag, gateTags, workflowTags),
+    isPool2Rtw(order, gateTags, workflowTags),
   );
 
   const byId = new Map<string, CycleOrder>();
@@ -570,8 +557,7 @@ export async function runThursdayCycle(
 
   for (const [email, orders] of byEmail) {
     const itemCount = orders.reduce(
-      (sum, order) =>
-        sum + billableItemCount(order, workflowTags.preorderProductTag),
+      (sum, order) => sum + billableItemCount(order, workflowTags),
       0,
     );
     if (itemCount <= 0) continue;

@@ -413,9 +413,10 @@ export default function SettingsPage() {
 
       <s-banner heading="How settings apply" tone="info">
         <s-paragraph>
-          Order tags are added when you click buttons on the Preorders tab.
-          Klaviyo template IDs are sent on each status email event. Leave a
-          field blank to use the built-in default shown in the hint.
+          Shipping Manager adds status tags to Shopify orders. This app listens
+          for those tags, sends the matching Klaviyo event, and adds the
+          matching email-sent tag. Leave a field blank to use the built-in
+          default shown in the hint.
         </s-paragraph>
       </s-banner>
 
@@ -425,8 +426,9 @@ export default function SettingsPage() {
           <s-section heading="Shopify order tags" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
-                Tags applied to orders for each preorder workflow step. Also
-                used by status email polling and the Thursday invoice pool.
+                Tags added by Shipping Manager for each preorder workflow step.
+                This app listens for these tags and sends the matching Klaviyo
+                email event.
               </s-paragraph>
               <TagChipField
                 label="Piece Made status tag"
@@ -546,13 +548,12 @@ export default function SettingsPage() {
           <s-section heading="Retired product item tags" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
-                These product tags are legacy references only. The Thursday
-                cycle now counts physical items that require shipping and
-                excludes the whole order when it has the india-direct order
-                tag.
+                Product tags used for classification. Product tag india, or
+                order tag india-direct, makes the order India Direct and
+                excludes it from the Thursday cycle.
               </s-paragraph>
               <TagChipField
-                label="Legacy Canada item tag"
+                label="Canada item tag"
                 name="canadaItemTag"
                 value={field(form, "canadaItemTag")}
                 defaultValue={data.defaults.tags.canadaItemTag}
@@ -566,7 +567,7 @@ export default function SettingsPage() {
                 onChange={update("dispatchItemTag")}
               />
               <TagChipField
-                label="Legacy India item tag"
+                label="India item tag"
                 name="indiaItemTag"
                 value={field(form, "indiaItemTag")}
                 defaultValue={data.defaults.tags.indiaItemTag}
@@ -578,8 +579,9 @@ export default function SettingsPage() {
           <s-section heading="Preorder product eligibility" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
-                Orders appear in the Preorders tab only when at least one
-                purchased product has this Shopify product tag.
+                Preorder orders are identified when any line item has product
+                tag group, dispatch skirt, or this configured preorder product
+                tag. Default is Web Saree.
               </s-paragraph>
               <TagChipField
                 label="Preorder product tag"
@@ -608,42 +610,42 @@ export default function SettingsPage() {
             </s-stack>
           </s-section>
 
-          <s-section heading="Preorder button labels" padding="base">
+          <s-section heading="Status email display labels" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
-                Text shown on action buttons and completed-step badges on the
-                Preorders tab.
+                Text used when displaying status email jobs. The status buttons
+                themselves live in Shipping Manager, not in this app.
               </s-paragraph>
               <TextEditField
-                label="Piece Made button / badge"
+                label="Piece Made status label"
                 name="pieceMade"
                 value={field(form, "pieceMade")}
                 details={`Default: ${data.defaults.labels.pieceMade}`}
                 onChange={update("pieceMade")}
               />
               <TextEditField
-                label="Leaving for Canada button / badge"
+                label="Leaving for Canada status label"
                 name="leavingForCanada"
                 value={field(form, "leavingForCanada")}
                 details={`Default: ${data.defaults.labels.leavingForCanada}`}
                 onChange={update("leavingForCanada")}
               />
               <TextEditField
-                label="Arrived in Canada button / badge"
+                label="Arrived in Canada status label"
                 name="arrivedInCanada"
                 value={field(form, "arrivedInCanada")}
                 details={`Default: ${data.defaults.labels.arrivedInCanada}`}
                 onChange={update("arrivedInCanada")}
               />
               <TextEditField
-                label="Skirt deposit button"
+                label="Skirt deposit label"
                 name="depositFulfilled"
                 value={field(form, "depositFulfilled")}
                 details={`Default: ${data.defaults.labels.depositFulfilled}`}
                 onChange={update("depositFulfilled")}
               />
               <TextEditField
-                label="Skirt deposit completed badge"
+                label="Skirt deposit completed label"
                 name="depositFulfilledDone"
                 value={field(form, "depositFulfilledDone")}
                 details={`Default: ${data.defaults.labels.depositFulfilledDone}`}
