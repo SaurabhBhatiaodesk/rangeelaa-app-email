@@ -149,12 +149,64 @@ export async function graphqlJson(
   query: string,
   variables?: Record<string, unknown>,
 ) {
-  const response = await admin.graphql(query, { variables });
-  const json = await response.json();
-  if (json.errors?.length) {
+  const maxAttempts = 4;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await admin.graphql(query, { variables });
+    const json = await response.json();
+    if (!json.errors?.length) {
+      return json;
+    }
+
+    if (attempt < maxAttempts && isShopifyThrottled(json)) {
+      await wait(throttleRetryDelayMs(json, attempt));
+      continue;
+    }
+
     throw new Error(
       json.errors.map((e: { message: string }) => e.message).join("; "),
     );
   }
-  return json;
+
+  throw new Error("Shopify GraphQL request failed");
+}
+
+function isShopifyThrottled(json: {
+  errors?: Array<{ message?: string; extensions?: { code?: string } }>;
+}): boolean {
+  return (json.errors ?? []).some((error) => {
+    const code = String(error.extensions?.code || "").toUpperCase();
+    const message = String(error.message || "").toLowerCase();
+    return code === "THROTTLED" || message.includes("throttled");
+  });
+}
+
+function throttleRetryDelayMs(
+  json: {
+    extensions?: {
+      cost?: {
+        requestedQueryCost?: number;
+        throttleStatus?: {
+          currentlyAvailable?: number;
+          restoreRate?: number;
+        };
+      };
+    };
+  },
+  attempt: number,
+): number {
+  const requested = Number(json.extensions?.cost?.requestedQueryCost || 0);
+  const available = Number(
+    json.extensions?.cost?.throttleStatus?.currentlyAvailable || 0,
+  );
+  const restoreRate = Number(
+    json.extensions?.cost?.throttleStatus?.restoreRate || 50,
+  );
+  const deficit = Math.max(0, requested - available);
+  const estimated = restoreRate > 0 ? (deficit / restoreRate) * 1000 : 0;
+  return Math.min(10_000, Math.max(1_000 * attempt, estimated + 500));
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

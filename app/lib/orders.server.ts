@@ -5,7 +5,11 @@ import {
   type StatusAction,
 } from "./tags";
 import type { PreorderWorkflowTags } from "./klaviyo-settings.server";
-import { isAllowedShippingCountry, type LineItemInfo } from "./cycle-shared.server";
+import {
+  graphqlJson,
+  isAllowedShippingCountry,
+  type LineItemInfo,
+} from "./cycle-shared.server";
 import {
   classifyOrder,
   countPreorderProductShippingItems,
@@ -76,7 +80,8 @@ async function fetchOrdersByQuery(
   first: number,
   skirtDepositTags: { groupTag: string; partialTag: string },
 ): Promise<ShippingOrder[]> {
-  const response = await admin.graphql(
+  const json = await graphqlJson(
+    admin,
     `#graphql
       query ShippingManagerOrders($first: Int!, $query: String!) {
         orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {
@@ -87,17 +92,8 @@ async function fetchOrdersByQuery(
           }
         }
       }`,
-    { variables: { first, query } },
+    { first, query },
   );
-
-  const json = await response.json();
-
-  if (json.errors?.length) {
-    const message = json.errors
-      .map((e: { message: string }) => e.message)
-      .join("; ");
-    throw new Error(message);
-  }
 
   const edges = json.data?.orders?.edges ?? [];
 
@@ -397,7 +393,8 @@ export async function addOrderTags(
   orderId: string,
   tags: string[],
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const response = await admin.graphql(
+  const json = await graphqlJson(
+    admin,
     `#graphql
       mutation AddOrderTags($id: ID!, $tags: [String!]!) {
         tagsAdd(id: $id, tags: $tags) {
@@ -412,10 +409,9 @@ export async function addOrderTags(
           }
         }
       }`,
-    { variables: { id: orderId, tags } },
+    { id: orderId, tags },
   );
 
-  const json = await response.json();
   const userErrors = json.data?.tagsAdd?.userErrors ?? [];
   if (userErrors.length > 0) {
     return { ok: false, error: userErrors.map((e: { message: string }) => e.message).join(", ") };
@@ -427,7 +423,8 @@ async function getOrderSnapshot(
   admin: AdminGraphql,
   orderId: string,
 ): Promise<{ email: string | null; tags: string[]; lineItems: LineItemInfo[] } | null> {
-  const response = await admin.graphql(
+  const json = await graphqlJson(
+    admin,
     `#graphql
       query OrderSnapshot($id: ID!) {
         order(id: $id) {
@@ -447,9 +444,8 @@ async function getOrderSnapshot(
           }
         }
       }`,
-    { variables: { id: orderId } },
+    { id: orderId },
   );
-  const json = await response.json();
   const order = json.data?.order;
   if (!order) return null;
   const lineEdges =
