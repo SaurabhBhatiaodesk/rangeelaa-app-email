@@ -15,6 +15,10 @@ type DeliveryRateCandidate = ShippingProfileRate & {
   conditions: DeliveryRateCondition[];
 };
 
+const DELIVERY_PROFILE_FIRST = 10;
+const LOCATION_ZONE_FIRST = 20;
+const METHOD_DEFINITION_FIRST = 25;
+
 export async function resolveShippingRateFromProfiles(
   admin: AdminGraphql,
   destination: {
@@ -33,13 +37,17 @@ export async function resolveShippingRateFromProfiles(
     json = await graphqlJson(
       admin,
       `#graphql
-        query ThursdayShippingRatesFromProfiles($first: Int!) {
-          deliveryProfiles(first: $first, merchantOwnedOnly: true) {
+        query ThursdayShippingRatesFromProfiles(
+          $profileFirst: Int!
+          $zoneFirst: Int!
+          $methodFirst: Int!
+        ) {
+          deliveryProfiles(first: $profileFirst, merchantOwnedOnly: true) {
             edges {
               node {
                 name
                 profileLocationGroups {
-                  locationGroupZones(first: 100) {
+                  locationGroupZones(first: $zoneFirst) {
                     edges {
                       node {
                         zone {
@@ -53,7 +61,7 @@ export async function resolveShippingRateFromProfiles(
                             }
                           }
                         }
-                        methodDefinitions(first: 100) {
+                        methodDefinitions(first: $methodFirst) {
                           edges {
                             node {
                               active
@@ -99,7 +107,11 @@ export async function resolveShippingRateFromProfiles(
             }
           }
         }`,
-      { first: 50 },
+      {
+        profileFirst: DELIVERY_PROFILE_FIRST,
+        zoneFirst: LOCATION_ZONE_FIRST,
+        methodFirst: METHOD_DEFINITION_FIRST,
+      },
     );
   } catch (error) {
     if (!isDeliveryProfilesAccessDenied(error)) {
