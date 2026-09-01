@@ -697,6 +697,14 @@ export default function ShippingManagerIndex() {
                   in{" "}
                   <s-link href="/app/settings">Settings</s-link>.
                 </s-paragraph>
+                <s-paragraph>
+                  Status emails (Piece Made, Leaving for Canada, Arrived in
+                  Canada) send for any order with the matching status tag —
+                  RTW or Preorder — as long as the order is not India Direct.
+                  The Preorder/RTW split only changes the Thursday invoice
+                  cycle: which pool the order joins and how its item count is
+                  calculated.
+                </s-paragraph>
               </s-stack>
             </s-grid>
           </s-box>
