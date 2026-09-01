@@ -24,8 +24,10 @@ import {
   type ShopSettingsInput,
 } from "../lib/klaviyo-settings.server";
 import {
+  DEFAULT_SHIPPING_RATE_TABLE,
   DEFAULT_SHIPPING_RATE_TABLE_TEXT,
   parseShippingRateTable,
+  type ShippingRateTable,
 } from "../lib/shipping-rates";
 import { authenticate } from "../shopify.server";
 
@@ -383,41 +385,280 @@ function TextEditField({
   );
 }
 
-function TextAreaField({
-  label,
-  name,
-  value,
-  details,
-  onChange,
+type TierField = "min" | "max" | "amount";
+type TierRow = { key: string; min: string; max: string; amount: string };
+
+let tierRowCounter = 0;
+function nextTierRowKey(): string {
+  tierRowCounter += 1;
+  return `tier-${tierRowCounter}`;
+}
+
+function tiersToRows(
+  tiers: Array<{ min: number; max?: number; amount: string }>,
+): TierRow[] {
+  return tiers.map((tier) => ({
+    key: nextTierRowKey(),
+    min: String(tier.min),
+    max: tier.max === undefined ? "" : String(tier.max),
+    amount: tier.amount,
+  }));
+}
+
+function rowsToTiers(
+  rows: TierRow[],
+): Array<{ min: number; max?: number; amount: string }> {
+  return rows.map((row) => {
+    const maxTrim = row.max.trim();
+    const tier: { min: number; max?: number; amount: string } = {
+      min: Number(row.min),
+      amount: row.amount.trim(),
+    };
+    if (maxTrim !== "") tier.max = Number(maxTrim);
+    return tier;
+  });
+}
+
+const tierThStyle = {
+  textAlign: "left" as const,
+  padding: "6px 8px",
+  fontSize: 12,
+  color: "#6B6B6B",
+  borderBottom: "1px solid #E1E1E1",
+};
+
+const tierTdStyle = {
+  padding: "4px 6px",
+  verticalAlign: "middle" as const,
+};
+
+const tierInputStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  border: "1px solid #D7D7D7",
+  borderRadius: 6,
+  padding: "6px 8px",
+  fontSize: 13,
+};
+
+function RateTierTable({
+  title,
+  rows,
+  onFieldChange,
+  onAddRow,
+  onRemoveRow,
 }: {
-  label: string;
-  name: string;
-  value: string;
-  details: string;
-  onChange: (value: string) => void;
+  title: string;
+  rows: TierRow[];
+  onFieldChange: (rowKey: string, field: TierField, value: string) => void;
+  onAddRow: () => void;
+  onRemoveRow: (rowKey: string) => void;
 }) {
   return (
     <s-stack direction="block" gap="small-200">
-      <s-text type="strong">{label}</s-text>
-      <textarea
-        name={name}
-        value={value}
-        onChange={(event) => onChange(event.currentTarget.value)}
-        aria-label={label}
-        rows={20}
+      <s-text type="strong">{title}</s-text>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={tierThStyle}>Items from</th>
+              <th style={tierThStyle}>Items to (blank = no limit)</th>
+              <th style={tierThStyle}>Rate (CAD)</th>
+              <th style={tierThStyle} />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key}>
+                <td style={tierTdStyle}>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={row.min}
+                    aria-label={`${title} items from`}
+                    onChange={(event) =>
+                      onFieldChange(row.key, "min", event.currentTarget.value)
+                    }
+                    style={tierInputStyle}
+                  />
+                </td>
+                <td style={tierTdStyle}>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="No limit"
+                    value={row.max}
+                    aria-label={`${title} items to`}
+                    onChange={(event) =>
+                      onFieldChange(row.key, "max", event.currentTarget.value)
+                    }
+                    style={tierInputStyle}
+                  />
+                </td>
+                <td style={tierTdStyle}>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={row.amount}
+                    aria-label={`${title} rate`}
+                    onChange={(event) =>
+                      onFieldChange(
+                        row.key,
+                        "amount",
+                        event.currentTarget.value,
+                      )
+                    }
+                    style={tierInputStyle}
+                  />
+                </td>
+                <td style={{ ...tierTdStyle, width: 40 }}>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveRow(row.key)}
+                    aria-label={`Remove ${title} tier`}
+                    style={{
+                      appearance: "none",
+                      border: "1px solid #D7D7D7",
+                      background: "#FFFFFF",
+                      borderRadius: 6,
+                      width: 28,
+                      height: 28,
+                      cursor: "pointer",
+                      color: "#8C1D18",
+                    }}
+                  >
+                    ×
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button
+        type="button"
+        onClick={onAddRow}
         style={{
-          width: "100%",
-          minHeight: 360,
-          boxSizing: "border-box",
+          appearance: "none",
           border: "1px solid #D7D7D7",
+          background: "#FFFFFF",
           borderRadius: 6,
-          padding: 12,
-          font: "13px ui-monospace, SFMono-Regular, Consolas, monospace",
-          lineHeight: 1.45,
-          resize: "vertical",
+          padding: "6px 12px",
+          cursor: "pointer",
+          width: "fit-content",
+          fontSize: 13,
         }}
+      >
+        + Add tier
+      </button>
+    </s-stack>
+  );
+}
+
+function ShippingRateTableEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const parsedInitial: ShippingRateTable = (() => {
+    try {
+      return parseShippingRateTable(value);
+    } catch {
+      return DEFAULT_SHIPPING_RATE_TABLE;
+    }
+  })();
+
+  const [caRows, setCaRows] = useState<TierRow[]>(() =>
+    tiersToRows(parsedInitial.CA ?? []),
+  );
+  const [usRows, setUsRows] = useState<TierRow[]>(() =>
+    tiersToRows(parsedInitial.US ?? []),
+  );
+  const otherCountriesRef = useRef<ShippingRateTable>(
+    Object.fromEntries(
+      Object.entries(parsedInitial).filter(
+        ([code]) => code !== "CA" && code !== "US",
+      ),
+    ),
+  );
+
+  const emit = (nextCa: TierRow[], nextUs: TierRow[]) => {
+    const table: ShippingRateTable = {
+      ...otherCountriesRef.current,
+      CA: rowsToTiers(nextCa) as never,
+      US: rowsToTiers(nextUs) as never,
+    };
+    onChange(JSON.stringify(table, null, 2));
+  };
+
+  const updateRow = (
+    country: "CA" | "US",
+    rowKey: string,
+    field: TierField,
+    fieldValue: string,
+  ) => {
+    if (country === "CA") {
+      const next = caRows.map((row) =>
+        row.key === rowKey ? { ...row, [field]: fieldValue } : row,
+      );
+      setCaRows(next);
+      emit(next, usRows);
+    } else {
+      const next = usRows.map((row) =>
+        row.key === rowKey ? { ...row, [field]: fieldValue } : row,
+      );
+      setUsRows(next);
+      emit(caRows, next);
+    }
+  };
+
+  const addRow = (country: "CA" | "US") => {
+    const newRow: TierRow = { key: nextTierRowKey(), min: "", max: "", amount: "" };
+    if (country === "CA") {
+      const next = [...caRows, newRow];
+      setCaRows(next);
+      emit(next, usRows);
+    } else {
+      const next = [...usRows, newRow];
+      setUsRows(next);
+      emit(caRows, next);
+    }
+  };
+
+  const removeRow = (country: "CA" | "US", rowKey: string) => {
+    if (country === "CA") {
+      const next = caRows.filter((row) => row.key !== rowKey);
+      setCaRows(next);
+      emit(next, usRows);
+    } else {
+      const next = usRows.filter((row) => row.key !== rowKey);
+      setUsRows(next);
+      emit(caRows, next);
+    }
+  };
+
+  return (
+    <s-stack direction="block" gap="large-200">
+      <RateTierTable
+        title="Canada rates (CAD)"
+        rows={caRows}
+        onFieldChange={(rowKey, field, val) => updateRow("CA", rowKey, field, val)}
+        onAddRow={() => addRow("CA")}
+        onRemoveRow={(rowKey) => removeRow("CA", rowKey)}
       />
-      <s-text tone="neutral">{details}</s-text>
+      <RateTierTable
+        title="USA rates (CAD)"
+        rows={usRows}
+        onFieldChange={(rowKey, field, val) => updateRow("US", rowKey, field, val)}
+        onAddRow={() => addRow("US")}
+        onRemoveRow={(rowKey) => removeRow("US", rowKey)}
+      />
+      <input type="hidden" name="shippingRateTable" value={value} />
     </s-stack>
   );
 }
@@ -428,11 +669,13 @@ export default function SettingsPage() {
   const navigation = useNavigation();
   const shopify = useAppBridge();
   const [form, setForm] = useState(data.form);
+  const [rateTableResetToken, setRateTableResetToken] = useState(0);
 
   const saving = navigation.state !== "idle";
 
   useEffect(() => {
     setForm(data.form);
+    setRateTableResetToken((token) => token + 1);
   }, [data.form]);
 
   useEffect(() => {
@@ -440,6 +683,7 @@ export default function SettingsPage() {
       shopify.toast.show(actionData.message);
       if (actionData.form) {
         setForm(actionData.form);
+        setRateTableResetToken((token) => token + 1);
       }
     }
   }, [actionData, shopify]);
@@ -681,18 +925,18 @@ export default function SettingsPage() {
                 combined item count across all qualifying orders for that
                 customer.
               </s-paragraph>
-              <s-banner tone="warning" heading="Use valid JSON">
+              <s-banner tone="warning" heading="Change with care">
                 <s-paragraph>
-                  Keep country codes as CA/US. Each tier needs min, optional
-                  max, and amount. Leave max blank by omitting it for the 20+
-                  tier. Leave this setting blank to use the built-in defaults.
+                  Edit the tiers below directly — no JSON needed. Leave
+                  "Items to" blank on the top row of each table for an
+                  open-ended tier (e.g. 20+ items). Use "Reset to defaults"
+                  at the bottom of the page to restore the built-in CA/US
+                  rates.
                 </s-paragraph>
               </s-banner>
-              <TextAreaField
-                label="Shipping rate table JSON"
-                name="shippingRateTable"
+              <ShippingRateTableEditor
+                key={rateTableResetToken}
                 value={field(form, "shippingRateTable")}
-                details="Amounts are CAD. Leave blank to use the built-in CA/US defaults."
                 onChange={(value) =>
                   setForm((prev) => ({
                     ...prev,
