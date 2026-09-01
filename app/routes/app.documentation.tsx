@@ -514,7 +514,15 @@ export default function DocumentationPage() {
                 and send Klaviyo status emails, then run the Thursday shipping
                 invoice cycle. Orders are classified as Preorder, RTW, or India
                 Direct using product tags and order tags. India Direct orders
-                are always excluded from the Thursday cycle.
+                are always excluded from both jobs.
+              </s-paragraph>
+              <s-paragraph>
+                The Preorder/RTW split matters differently for each job. For
+                the Thursday cycle, it changes which pool the order joins and
+                how its item count is calculated. For status emails (Piece
+                Made, Leaving for Canada, Arrived in Canada), it does not
+                matter — any order with the status tag gets the email, RTW or
+                Preorder, as long as it is not India Direct.
               </s-paragraph>
             </s-box>
           </s-box>
