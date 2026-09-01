@@ -1,5 +1,3 @@
-import type { AdminGraphql } from "./cycle-shared.server";
-
 export type ShippingProfileRate = {
   amount: string;
   currencyCode: string;
@@ -44,22 +42,23 @@ export const DEFAULT_SHIPPING_RATE_TABLE_TEXT = JSON.stringify(
   2,
 );
 
-export async function resolveShippingRateFromProfiles(
-  _admin: AdminGraphql,
-  destination: {
-    countryCode: string | null;
-    provinceCode?: string | null;
-    itemCount: number;
-  },
-  rateTableValue?: string | null,
-): Promise<ShippingProfileRate> {
+/**
+ * Synchronous lookup against an already-parsed table. Prefers a bounded tier
+ * (has a max) over an unbounded one regardless of array order, so an
+ * open-ended tier (no max) can be placed anywhere in the admin-edited table
+ * without accidentally shadowing the bounded tiers below it.
+ */
+export function selectTieredShippingRate(
+  table: ShippingRateTable,
+  destination: { countryCode: string | null; itemCount: number },
+): ShippingProfileRate {
   const countryCode = (destination.countryCode || "").toUpperCase();
   if (!countryCode) {
     throw new Error("Cannot resolve shipping rate without shipping country");
   }
 
-  const table = parseShippingRateTable(rateTableValue)[countryCode];
-  if (!table) {
+  const tiers = table[countryCode];
+  if (!tiers) {
     throw new Error(`No tiered shipping rate configured for ${countryCode}`);
   }
 
@@ -70,9 +69,12 @@ export async function resolveShippingRateFromProfiles(
     );
   }
 
-  const tier = table.find(
-    (rate) => itemCount >= rate.min && (!rate.max || itemCount <= rate.max),
-  );
+  const bounded = tiers.filter((rate) => rate.max !== undefined);
+  const unbounded = tiers.filter((rate) => rate.max === undefined);
+  const tier =
+    bounded.find(
+      (rate) => itemCount >= rate.min && itemCount <= rate.max!,
+    ) ?? unbounded.find((rate) => itemCount >= rate.min);
   if (!tier) {
     throw new Error(
       `No tiered shipping rate matched ${itemCount} item(s) for ${countryCode}`,

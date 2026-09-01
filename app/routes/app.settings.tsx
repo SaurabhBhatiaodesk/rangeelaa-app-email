@@ -857,7 +857,7 @@ export default function SettingsPage() {
                 label="Allowed shipping country codes"
                 name="allowedShippingCountryCodes"
                 value={field(form, "allowedShippingCountryCodes")}
-                details={`Use 2-letter codes: CA = Canada, US = United States. Separate with commas. Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
+                details={`CA and US are always included and cannot be removed here. Use this field only to add extra 2-letter codes on top of them (comma-separated) — but add a matching rate table entry below first, or the Thursday cycle will error for that country. Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
                 onChange={update("allowedShippingCountryCodes")}
               />
             </s-stack>
@@ -874,10 +874,11 @@ export default function SettingsPage() {
               <s-banner tone="warning" heading="Change with care">
                 <s-paragraph>
                   Edit the tiers below directly — no JSON needed. Leave
-                  "Items to" blank on the top row of each table for an
-                  open-ended tier (e.g. 20+ items). Use "Reset to defaults"
-                  at the bottom of the page to restore the built-in CA/US
-                  rates.
+                  "Items to" blank on the tier that should have no upper
+                  limit (e.g. 20+ items) — row order does not matter, the
+                  app always checks tiers with a limit before the
+                  open-ended one. Use "Reset to defaults" at the bottom of
+                  the page to restore the built-in CA/US rates.
                 </s-paragraph>
               </s-banner>
               <ShippingRateTableEditor

@@ -1,5 +1,5 @@
 import { hasTag, normalizeTags } from "./tags";
-import { resolveShippingRateFromProfiles } from "./shipping-rates";
+import { parseShippingRateTable, selectTieredShippingRate } from "./shipping-rates";
 import {
   type AdminGraphql,
   type CycleGateTags,
@@ -53,7 +53,7 @@ const CYCLE_ORDER_FIELDS = `
   metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {
     value
   }
-  lineItems(first: 50) {
+  lineItems(first: 250) {
     edges {
       node {
         title
@@ -131,7 +131,7 @@ async function fetchCycleOrders(
 ): Promise<CycleOrder[]> {
   const orders: CycleOrder[] = [];
   let after: string | null = null;
-  const pageSize = Math.min(15, first);
+  const pageSize = Math.min(250, first);
 
   while (orders.length < first) {
     const json = await graphqlJson(
@@ -521,6 +521,7 @@ export async function runThursdayCycle(
     thursdayEmailSentTag: workflowTags.thursdayEmailSentTag,
     shippingPaidTag: workflowTags.shippingPaidTag,
   };
+  const rateTable = parseShippingRateTable(settings.shippingRateTable);
 
   const [pool1Raw, pool2Raw] = await Promise.all([
     fetchCycleOrders(
@@ -586,15 +587,29 @@ export async function runThursdayCycle(
     );
     if (itemCount <= 0) continue;
 
-    const shippingRate = await resolveShippingRateFromProfiles(admin, {
-      countryCode: orders[0]?.shippingCountryCode ?? null,
-      provinceCode: orders[0]?.shippingAddress?.provinceCode ?? null,
-      itemCount,
-    }, settings.shippingRateTable);
-    const shippingAmount = shippingRate.amount;
     const orderNames = orders.map((o) => o.name);
     const customerName =
       orders.find((order) => order.customerName)?.customerName || email;
+
+    let shippingRate;
+    try {
+      shippingRate = selectTieredShippingRate(rateTable, {
+        countryCode: orders[0]?.shippingCountryCode ?? null,
+        itemCount,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Thursday cycle shipping rate lookup failed", {
+        email,
+        orderIds: orders.map((o) => o.id),
+        itemCount,
+        error: message,
+      });
+      results.push({ email, orderNames, itemCount, shippingAmount: "", error: message });
+      continue;
+    }
+
+    const shippingAmount = shippingRate.amount;
     const row: ThursdayCustomerResult = {
       email,
       orderNames,

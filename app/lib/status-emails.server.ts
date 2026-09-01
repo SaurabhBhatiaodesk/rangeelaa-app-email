@@ -99,7 +99,7 @@ async function fetchOrdersNeedingEmail(
                 name
                 email
                 tags
-                lineItems(first: 50) {
+                lineItems(first: 250) {
                   edges {
                     node {
                       product {
@@ -116,7 +116,7 @@ async function fetchOrdersNeedingEmail(
             }
           }
         }`,
-      { first: Math.min(15, 50 - orders.length), after, query },
+      { first: Math.min(250, 50 - orders.length), after, query },
     );
 
     const connection = json.data?.orders;
