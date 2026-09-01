@@ -23,6 +23,14 @@ type StatusEmailJob = {
   label: string;
 };
 
+type StatusEmailOrderCandidate = {
+  id: string;
+  name: string;
+  email: string | null;
+  tags: string[];
+  lineItems: Array<{ productTags: string[] }>;
+};
+
 const STATUS_EMAIL_ACTIONS: StatusEmailAction[] = [
   "piece_made",
   "leaving_for_canada",
@@ -75,60 +83,84 @@ async function fetchOrdersNeedingEmail(
   workflowTags: PreorderWorkflowTags,
 ) {
   const query = `tag:${statusTag} AND -tag:${sentTag}`;
-  const json = await graphqlJson(
-    admin,
-    `#graphql
-      query StatusEmailOrders($first: Int!, $query: String!) {
-        orders(first: $first, query: $query, sortKey: UPDATED_AT, reverse: true) {
-          edges {
-            node {
-              id
-              name
-              email
-              tags
-              lineItems(first: 250) {
-                edges {
-                  node {
-                    product {
-                      tags
+  const orders: StatusEmailOrderCandidate[] = [];
+  let after: string | null = null;
+
+  while (orders.length < 50) {
+    const json = await graphqlJson(
+      admin,
+      `#graphql
+        query StatusEmailOrders($first: Int!, $after: String, $query: String!) {
+          orders(first: $first, after: $after, query: $query, sortKey: UPDATED_AT, reverse: true) {
+            edges {
+              cursor
+              node {
+                id
+                name
+                email
+                tags
+                lineItems(first: 50) {
+                  edges {
+                    node {
+                      product {
+                        tags
+                      }
                     }
                   }
                 }
               }
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
-        }
-      }`,
-    { first: 50, query },
-  );
+        }`,
+      { first: Math.min(15, 50 - orders.length), after, query },
+    );
 
-  return (json.data?.orders?.edges ?? []).map(
-    (edge: {
-      node: {
-        id: string;
-        name: string;
-        email: string | null;
-        tags: string[] | string;
-        lineItems?: {
-          edges?: Array<{
-            node?: { product?: { tags?: string[] | string } | null };
-          }>;
-        };
-      };
-    }) => {
-      const lineEdges = edge.node.lineItems?.edges ?? [];
-      return {
-        id: edge.node.id,
-        name: edge.node.name,
-        email: edge.node.email,
-        tags: normalizeTags(edge.node.tags),
-        lineItems: lineEdges.map((lineEdge) => ({
-          productTags: normalizeTags(lineEdge.node?.product?.tags),
-        })),
-      };
-    },
-  ).filter((order: { tags: string[]; lineItems: Array<{ productTags: string[] }> }) =>
-    classifyOrder(order, workflowTags) === "preorder",
+    const connection = json.data?.orders;
+    const edges = connection?.edges ?? [];
+    orders.push(
+      ...edges.map(
+        (edge: {
+          node: {
+            id: string;
+            name: string;
+            email: string | null;
+            tags: string[] | string;
+            lineItems?: {
+              edges?: Array<{
+                node?: { product?: { tags?: string[] | string } | null };
+              }>;
+            };
+          };
+        }) => {
+          const lineEdges = edge.node.lineItems?.edges ?? [];
+          return {
+            id: edge.node.id,
+            name: edge.node.name,
+            email: edge.node.email,
+            tags: normalizeTags(edge.node.tags),
+            lineItems: lineEdges.map((lineEdge) => ({
+              productTags: normalizeTags(lineEdge.node?.product?.tags),
+            })),
+          };
+        },
+      ),
+    );
+
+    if (!connection?.pageInfo?.hasNextPage) break;
+    after =
+      connection.pageInfo.endCursor ??
+      edges[edges.length - 1]?.cursor ??
+      null;
+    if (!after) break;
+  }
+
+  return orders.filter(
+    (order: { tags: string[]; lineItems: Array<{ productTags: string[] }> }) =>
+      classifyOrder(order, workflowTags) !== "india_direct",
   );
 }
 

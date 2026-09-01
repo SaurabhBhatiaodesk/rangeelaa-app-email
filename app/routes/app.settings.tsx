@@ -23,6 +23,10 @@ import {
   saveShopSettings,
   type ShopSettingsInput,
 } from "../lib/klaviyo-settings.server";
+import {
+  DEFAULT_SHIPPING_RATE_TABLE_TEXT,
+  parseShippingRateTable,
+} from "../lib/shipping-rates";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -37,6 +41,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       tags: DEFAULT_PREORDER_TAGS,
       labels: DEFAULT_PREORDER_LABELS,
       templates: DEFAULT_KLAVIYO_TEMPLATE_IDS,
+      shippingRateTable: DEFAULT_SHIPPING_RATE_TABLE_TEXT,
     },
   };
 };
@@ -77,6 +82,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       indiaItemTag: "",
       preorderProductTag: "",
       allowedShippingCountryCodes: "",
+      shippingRateTable: "",
     });
     const settings = await getShopSettings(session.shop);
     return {
@@ -86,7 +92,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     };
   }
 
-  await saveShopSettings(session.shop, parseShopSettingsForm(formData));
+  const input = parseShopSettingsForm(formData);
+  try {
+    parseShippingRateTable(input.shippingRateTable);
+  } catch (error) {
+    return {
+      ok: false as const,
+      message: error instanceof Error ? error.message : String(error),
+      form: input,
+    };
+  }
+
+  await saveShopSettings(session.shop, input);
   const settings = await getShopSettings(session.shop);
   return {
     ok: true as const,
@@ -366,6 +383,45 @@ function TextEditField({
   );
 }
 
+function TextAreaField({
+  label,
+  name,
+  value,
+  details,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  details: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <s-stack direction="block" gap="small-200">
+      <s-text type="strong">{label}</s-text>
+      <textarea
+        name={name}
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        aria-label={label}
+        rows={20}
+        style={{
+          width: "100%",
+          minHeight: 360,
+          boxSizing: "border-box",
+          border: "1px solid #D7D7D7",
+          borderRadius: 6,
+          padding: 12,
+          font: "13px ui-monospace, SFMono-Regular, Consolas, monospace",
+          lineHeight: 1.45,
+          resize: "vertical",
+        }}
+      />
+      <s-text tone="neutral">{details}</s-text>
+    </s-stack>
+  );
+}
+
 export default function SettingsPage() {
   const data = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -408,6 +464,12 @@ export default function SettingsPage() {
             <s-text type="strong">KLAVIYO_API_KEY</s-text> in your app
             environment (Heroku config or .env).
           </s-paragraph>
+        </s-banner>
+      )}
+
+      {actionData && !actionData.ok && (
+        <s-banner heading="Settings not saved" tone="critical">
+          <s-paragraph>{actionData.message}</s-paragraph>
         </s-banner>
       )}
 
@@ -597,8 +659,9 @@ export default function SettingsPage() {
             <s-stack direction="block" gap="base">
               <s-paragraph>
                 Choose which shipping countries qualify for Thursday invoices
-                and shipping-paid alerts. Shipping amounts are read from
-                Shopify Shipping profiles, not from a hardcoded price table.
+                and shipping-paid alerts. Canada and USA are always included.
+                Shipping amounts use the Thursday tiered rate table by country
+                and total combined item count.
               </s-paragraph>
               <s-text-field
                 label="Allowed shipping country codes"
@@ -606,6 +669,36 @@ export default function SettingsPage() {
                 value={field(form, "allowedShippingCountryCodes")}
                 details={`Use 2-letter codes: CA = Canada, US = United States. Separate with commas. Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
                 onChange={update("allowedShippingCountryCodes")}
+              />
+            </s-stack>
+          </s-section>
+
+          <s-section heading="Thursday shipping rates" padding="base">
+            <s-stack direction="block" gap="base">
+              <s-paragraph>
+                Edit the CA/US tiered shipping table used by the Thursday
+                invoice cycle. The app matches the customer country and total
+                combined item count across all qualifying orders for that
+                customer.
+              </s-paragraph>
+              <s-banner tone="warning" heading="Use valid JSON">
+                <s-paragraph>
+                  Keep country codes as CA/US. Each tier needs min, optional
+                  max, and amount. Leave max blank by omitting it for the 20+
+                  tier. Leave this setting blank to use the built-in defaults.
+                </s-paragraph>
+              </s-banner>
+              <TextAreaField
+                label="Shipping rate table JSON"
+                name="shippingRateTable"
+                value={field(form, "shippingRateTable")}
+                details="Amounts are CAD. Leave blank to use the built-in CA/US defaults."
+                onChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    shippingRateTable: value,
+                  }))
+                }
               />
             </s-stack>
           </s-section>

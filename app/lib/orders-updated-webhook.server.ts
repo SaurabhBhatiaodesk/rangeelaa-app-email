@@ -196,7 +196,7 @@ export async function processStatusEmailTags(
 
   const settings = await getShopSettings(shop);
   const order = await fetchOrderForClassification(admin, orderGid);
-  if (!order || classifyOrder(order, settings.preorderTags) !== "preorder") {
+  if (!order || classifyOrder(order, settings.preorderTags) === "india_direct") {
     return;
   }
 

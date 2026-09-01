@@ -1127,7 +1127,8 @@ export default function ShippingManagerIndex() {
               Combines eligible preorder and ready-to-wear orders for the same
               customer into one draft shipping invoice. Uses the allowed
               shipping countries from Settings ({data.allowedCountryCodesLabel}
-              ). Excludes Saskatoon and India-only / mixed India orders.
+              ) and the Thursday tiered shipping table. Excludes Saskatoon and
+              India-only / mixed India orders.
             </s-paragraph>
 
             <s-box
@@ -1239,9 +1240,9 @@ export default function ShippingManagerIndex() {
                           A new Shopify Draft Order is created.
                         </s-list-item>
                         <s-list-item>
-                          The draft invoice amount matches the active Shopify
-                          shipping profile rate for the shipping address and is
-                          not $0.00.
+                          The draft invoice amount matches the Thursday tiered
+                          shipping table for the country and combined item
+                          count, and is not $0.00.
                         </s-list-item>
                         <s-list-item>
                           The customer receives the Klaviyo Thursday shipping

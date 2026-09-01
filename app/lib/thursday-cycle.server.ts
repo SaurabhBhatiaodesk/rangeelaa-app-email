@@ -53,7 +53,7 @@ const CYCLE_ORDER_FIELDS = `
   metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {
     value
   }
-  lineItems(first: 250) {
+  lineItems(first: 50) {
     edges {
       node {
         title
@@ -129,24 +129,48 @@ async function fetchCycleOrders(
   query: string,
   first = 75,
 ): Promise<CycleOrder[]> {
-  const json = await graphqlJson(
-    admin,
-    `#graphql
-      query ThursdayCycleOrders($first: Int!, $query: String!) {
-        orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {
-          edges {
-            node {
-              ${CYCLE_ORDER_FIELDS}
+  const orders: CycleOrder[] = [];
+  let after: string | null = null;
+  const pageSize = Math.min(15, first);
+
+  while (orders.length < first) {
+    const json = await graphqlJson(
+      admin,
+      `#graphql
+        query ThursdayCycleOrders($first: Int!, $after: String, $query: String!) {
+          orders(first: $first, after: $after, query: $query, sortKey: CREATED_AT, reverse: true) {
+            edges {
+              cursor
+              node {
+                ${CYCLE_ORDER_FIELDS}
+              }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
             }
           }
-        }
-      }`,
-    { first, query },
-  );
+        }`,
+      { first: Math.min(pageSize, first - orders.length), after, query },
+    );
 
-  return (json.data?.orders?.edges ?? []).map(
-    (e: { node: Record<string, unknown> }) => mapOrder(e.node),
-  );
+    const connection = json.data?.orders;
+    const edges = connection?.edges ?? [];
+    orders.push(
+      ...edges.map((e: { node: Record<string, unknown> }) =>
+        mapOrder(e.node),
+      ),
+    );
+
+    if (!connection?.pageInfo?.hasNextPage) break;
+    after =
+      connection.pageInfo.endCursor ??
+      edges[edges.length - 1]?.cursor ??
+      null;
+    if (!after) break;
+  }
+
+  return orders;
 }
 
 function isPool1Preorder(
@@ -566,7 +590,7 @@ export async function runThursdayCycle(
       countryCode: orders[0]?.shippingCountryCode ?? null,
       provinceCode: orders[0]?.shippingAddress?.provinceCode ?? null,
       itemCount,
-    });
+    }, settings.shippingRateTable);
     const shippingAmount = shippingRate.amount;
     const orderNames = orders.map((o) => o.name);
     const customerName =

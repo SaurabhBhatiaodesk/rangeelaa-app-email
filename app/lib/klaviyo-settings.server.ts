@@ -1,5 +1,6 @@
 import prisma from "../db.server";
 import { DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES } from "./cycle-shared.server";
+import { DEFAULT_SHIPPING_RATE_TABLE_TEXT } from "./shipping-rates";
 import { TAGS, type StatusEmailAction } from "./tags";
 
 /** Default Klaviyo template IDs (used when admin has not saved overrides). */
@@ -85,11 +86,12 @@ export type ShopAppSettings = {
   klaviyoTemplates: KlaviyoTemplateIds;
   preorderLabels: PreorderWorkflowLabels;
   preorderTags: PreorderWorkflowTags;
+  shippingRateTable: string;
 };
 
 export type ShopSettingsInput = { klaviyoApiKey: string } & KlaviyoTemplateIds &
   PreorderWorkflowLabels &
-  PreorderWorkflowTags;
+  PreorderWorkflowTags & { shippingRateTable: string };
 
 function trimOrEmpty(value: string | null | undefined): string {
   return (value ?? "").trim();
@@ -251,6 +253,10 @@ export async function getShopSettings(shop: string): Promise<ShopAppSettings> {
         DEFAULT_PREORDER_TAGS.allowedShippingCountryCodes,
       ),
     },
+    shippingRateTable: resolveTag(
+      row?.shippingRateTable,
+      DEFAULT_SHIPPING_RATE_TABLE_TEXT,
+    ),
   };
 }
 
@@ -302,6 +308,7 @@ export async function saveShopSettings(
       allowedShippingCountryCodes: trimOrEmpty(
         input.allowedShippingCountryCodes,
       ),
+      shippingRateTable: trimOrEmpty(input.shippingRateTable),
     },
     update: {
       klaviyoApiKey: trimOrEmpty(input.klaviyoApiKey),
@@ -337,6 +344,7 @@ export async function saveShopSettings(
       allowedShippingCountryCodes: trimOrEmpty(
         input.allowedShippingCountryCodes,
       ),
+      shippingRateTable: trimOrEmpty(input.shippingRateTable),
     },
   });
 }
@@ -349,6 +357,7 @@ export function flattenShopSettings(
     ...settings.klaviyoTemplates,
     ...settings.preorderLabels,
     ...settings.preorderTags,
+    shippingRateTable: settings.shippingRateTable,
   };
 }
 
@@ -393,6 +402,7 @@ export function parseShopSettingsForm(formData: FormData): ShopSettingsInput {
     allowedShippingCountryCodes: String(
       formData.get("allowedShippingCountryCodes") ?? "",
     ),
+    shippingRateTable: String(formData.get("shippingRateTable") ?? ""),
   };
 }
 

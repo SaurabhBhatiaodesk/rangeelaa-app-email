@@ -86,7 +86,7 @@ async function createKlaviyoEvent(options: {
 }
 
 /**
- * Fires a preorder status metric so the matching Klaviyo Flow can email.
+ * Fires a status metric so the matching Klaviyo Flow can email.
  */
 export async function sendPreorderStatusEmail(options: {
   apiKey: string;

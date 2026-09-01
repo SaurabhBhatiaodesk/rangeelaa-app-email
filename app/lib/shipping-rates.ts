@@ -1,7 +1,4 @@
-import {
-  type AdminGraphql,
-  graphqlJson,
-} from "./cycle-shared.server";
+import type { AdminGraphql } from "./cycle-shared.server";
 
 export type ShippingProfileRate = {
   amount: string;
@@ -10,396 +7,141 @@ export type ShippingProfileRate = {
   profileName: string;
 };
 
-type DeliveryRateCandidate = ShippingProfileRate & {
-  amountNumber: number;
-  conditions: DeliveryRateCondition[];
+type RateTier = {
+  min: number;
+  max?: number;
+  amount: string;
 };
 
-const DELIVERY_PROFILE_FIRST = 10;
-const LOCATION_ZONE_FIRST = 20;
-const METHOD_DEFINITION_FIRST = 25;
+export type ShippingRateTable = Record<string, RateTier[]>;
+
+export const DEFAULT_SHIPPING_RATE_TABLE: ShippingRateTable = {
+  CA: [
+    { min: 1, max: 1, amount: "17.39" },
+    { min: 2, max: 2, amount: "19.52" },
+    { min: 3, max: 3, amount: "19.75" },
+    { min: 4, max: 4, amount: "19.99" },
+    { min: 5, max: 9, amount: "23.26" },
+    { min: 10, max: 14, amount: "27.26" },
+    { min: 15, max: 19, amount: "29.26" },
+    { min: 20, amount: "32.26" },
+  ],
+  US: [
+    { min: 1, max: 1, amount: "18.99" },
+    { min: 2, max: 2, amount: "21.99" },
+    { min: 3, max: 3, amount: "23.99" },
+    { min: 4, max: 4, amount: "25.99" },
+    { min: 5, max: 9, amount: "31.79" },
+    { min: 10, max: 14, amount: "44.93" },
+    { min: 15, max: 19, amount: "47.93" },
+    { min: 20, amount: "51.93" },
+  ],
+};
+
+export const DEFAULT_SHIPPING_RATE_TABLE_TEXT = JSON.stringify(
+  DEFAULT_SHIPPING_RATE_TABLE,
+  null,
+  2,
+);
 
 export async function resolveShippingRateFromProfiles(
-  admin: AdminGraphql,
+  _admin: AdminGraphql,
   destination: {
     countryCode: string | null;
     provinceCode?: string | null;
     itemCount: number;
   },
+  rateTableValue?: string | null,
 ): Promise<ShippingProfileRate> {
   const countryCode = (destination.countryCode || "").toUpperCase();
-  const provinceCode = (destination.provinceCode || "").toUpperCase();
   if (!countryCode) {
-    throw new Error("Cannot resolve Shopify shipping rate without shipping country");
+    throw new Error("Cannot resolve shipping rate without shipping country");
   }
-  let json;
+
+  const table = parseShippingRateTable(rateTableValue)[countryCode];
+  if (!table) {
+    throw new Error(`No tiered shipping rate configured for ${countryCode}`);
+  }
+
+  const itemCount = Math.max(0, Math.floor(destination.itemCount));
+  if (itemCount < 1) {
+    throw new Error(
+      `Cannot resolve shipping rate for ${destination.itemCount} item(s)`,
+    );
+  }
+
+  const tier = table.find(
+    (rate) => itemCount >= rate.min && (!rate.max || itemCount <= rate.max),
+  );
+  if (!tier) {
+    throw new Error(
+      `No tiered shipping rate matched ${itemCount} item(s) for ${countryCode}`,
+    );
+  }
+
+  return {
+    amount: tier.amount,
+    currencyCode: "CAD",
+    methodName: `${countryCode} tiered shipping`,
+    profileName: "Thursday shipping rate table",
+  };
+}
+
+export function parseShippingRateTable(value?: string | null): ShippingRateTable {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return DEFAULT_SHIPPING_RATE_TABLE;
+
+  let parsed: unknown;
   try {
-    json = await graphqlJson(
-      admin,
-      `#graphql
-        query ThursdayShippingRatesFromProfiles(
-          $profileFirst: Int!
-          $zoneFirst: Int!
-          $methodFirst: Int!
-        ) {
-          deliveryProfiles(first: $profileFirst, merchantOwnedOnly: true) {
-            edges {
-              node {
-                name
-                profileLocationGroups {
-                  locationGroupZones(first: $zoneFirst) {
-                    edges {
-                      node {
-                        zone {
-                          countries {
-                            code {
-                              countryCode
-                              restOfWorld
-                            }
-                            provinces {
-                              code
-                            }
-                          }
-                        }
-                        methodDefinitions(first: $methodFirst) {
-                          edges {
-                            node {
-                              active
-                              name
-                              methodConditions {
-                                field
-                                operator
-                                conditionCriteria {
-                                  __typename
-                                  ... on MoneyV2 {
-                                    amount
-                                    currencyCode
-                                  }
-                                  ... on Weight {
-                                    value
-                                    unit
-                                  }
-                                }
-                              }
-                              rateProvider {
-                                __typename
-                                ... on DeliveryRateDefinition {
-                                  price {
-                                    amount
-                                    currencyCode
-                                  }
-                                }
-                                ... on DeliveryParticipant {
-                                  fixedFee {
-                                    amount
-                                    currencyCode
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }`,
-      {
-        profileFirst: DELIVERY_PROFILE_FIRST,
-        zoneFirst: LOCATION_ZONE_FIRST,
-        methodFirst: METHOD_DEFINITION_FIRST,
-      },
-    );
-  } catch (error) {
-    if (!isDeliveryProfilesAccessDenied(error)) {
-      throw error;
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new Error("Shipping rate table must be valid JSON");
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Shipping rate table must be a JSON object");
+  }
+
+  const table: ShippingRateTable = {};
+  for (const [rawCountryCode, rawTiers] of Object.entries(parsed)) {
+    const countryCode = rawCountryCode.trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(countryCode)) {
+      throw new Error(`Invalid shipping country code: ${rawCountryCode}`);
+    }
+    if (!Array.isArray(rawTiers) || rawTiers.length === 0) {
+      throw new Error(`Shipping rates for ${countryCode} must be a non-empty array`);
     }
 
-    throw new Error(
-      "Shopify denied access to deliveryProfiles. Approve the app's read_shipping permission, then rerun the Thursday invoice cycle. No fallback rate was used.",
-    );
-  }
-
-  const candidates = collectDeliveryRateCandidates(
-    json.data?.deliveryProfiles?.edges ?? [],
-    { countryCode, provinceCode, itemCount: destination.itemCount },
-  );
-
-  if (candidates.length === 0) {
-    throw new Error(
-      `No active Shopify shipping profile rate found for ${countryCode}`,
-    );
-  }
-
-  const profileName = process.env.THURSDAY_SHIPPING_PROFILE_NAME?.trim();
-  const matchingProfile = profileName
-    ? candidates.filter(
-        (candidate) =>
-          candidate.profileName.toLowerCase() === profileName.toLowerCase(),
-      )
-    : candidates;
-
-  if (matchingProfile.length === 0) {
-    throw new Error(
-      `No active Shopify shipping profile named "${profileName}" found for ${countryCode}`,
-    );
-  }
-
-  const methodName = process.env.THURSDAY_SHIPPING_METHOD_NAME?.trim();
-  const matchingMethod = methodName
-    ? matchingProfile.filter(
-        (candidate) =>
-          candidate.methodName.toLowerCase() === methodName.toLowerCase(),
-      )
-    : matchingProfile;
-
-  if (matchingMethod.length === 0) {
-    const profileHint = profileName ? ` in profile "${profileName}"` : "";
-    throw new Error(
-      `No active Shopify shipping profile rate named "${methodName}"${profileHint} found for ${countryCode}`,
-    );
-  }
-
-  const conditionMatched = matchingMethod.filter((candidate) =>
-    conditionsMatchItemCount(candidate.conditions, destination.itemCount),
-  );
-  const conditionless = matchingMethod.filter(
-    (candidate) => candidate.conditions.length === 0,
-  );
-  const matchedRates =
-    conditionMatched.length > 0 ? conditionMatched : conditionless;
-
-  if (matchedRates.length === 0) {
-    const positiveFallbackRates = matchingMethod.filter(
-      (candidate) => candidate.amountNumber > 0,
-    );
-    if (positiveFallbackRates.length === 0) {
-      throw new Error(
-        `No Shopify shipping profile rate matched ${destination.itemCount} physical item(s) for ${countryCode}`,
-      );
-    }
-    const selectedFallback = selectLowestRate(positiveFallbackRates);
-    return {
-      amount: selectedFallback.amount,
-      currencyCode: selectedFallback.currencyCode,
-      methodName: selectedFallback.methodName,
-      profileName: selectedFallback.profileName,
-    };
-  }
-
-  const exactPaidRates = conditionMatched.filter(
-    (candidate) => candidate.amountNumber > 0,
-  );
-  const defaultPaidRates = conditionless.filter(
-    (candidate) => candidate.amountNumber > 0,
-  );
-  const anyPaidRates = matchingMethod.filter(
-    (candidate) => candidate.amountNumber > 0,
-  );
-  const selectableRates =
-    exactPaidRates.length > 0
-      ? exactPaidRates
-      : defaultPaidRates.length > 0
-        ? defaultPaidRates
-        : anyPaidRates;
-
-  if (selectableRates.length === 0) {
-    throw new Error(
-      `Shopify shipping profile returned only zero-dollar rates for ${destination.itemCount} physical item(s) to ${countryCode}`,
-    );
-  }
-
-  const selected = selectLowestRate(selectableRates);
-
-  return {
-    amount: selected.amount,
-    currencyCode: selected.currencyCode,
-    methodName: selected.methodName,
-    profileName: selected.profileName,
-  };
-}
-
-function selectLowestRate(candidates: DeliveryRateCandidate[]): DeliveryRateCandidate {
-  return [...candidates].sort((a, b) => a.amountNumber - b.amountNumber)[0]!;
-}
-
-function isDeliveryProfilesAccessDenied(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /access denied/i.test(message) && /deliveryProfiles/i.test(message);
-}
-
-function collectDeliveryRateCandidates(
-  profileEdges: Array<{ node?: Record<string, unknown> }>,
-  destination: { countryCode: string; provinceCode: string; itemCount: number },
-): DeliveryRateCandidate[] {
-  const candidates: DeliveryRateCandidate[] = [];
-
-  for (const profileEdge of profileEdges) {
-    const profile = profileEdge.node;
-    if (!profile) continue;
-
-    const profileName = String(profile.name || "Shipping profile");
-    const locationGroups = Array.isArray(profile.profileLocationGroups)
-      ? profile.profileLocationGroups
-      : [];
-
-    for (const locationGroup of locationGroups as Array<Record<string, unknown>>) {
-      const zoneEdges =
-        (
-          locationGroup.locationGroupZones as {
-            edges?: Array<{ node?: Record<string, unknown> }>;
-          }
-        )?.edges ?? [];
-
-      for (const zoneEdge of zoneEdges) {
-        const zoneNode = zoneEdge.node;
-        if (!zoneNode || !zoneMatchesDestination(zoneNode, destination)) {
-          continue;
-        }
-
-        const methodEdges =
-          (
-            zoneNode.methodDefinitions as {
-              edges?: Array<{ node?: Record<string, unknown> }>;
-            }
-          )?.edges ?? [];
-
-        for (const methodEdge of methodEdges) {
-          const method = methodEdge.node;
-          if (!method?.active) continue;
-
-          const rate = extractRateProviderPrice(method.rateProvider);
-          if (!rate) continue;
-
-          const amountNumber = Number(rate.amount);
-          if (!Number.isFinite(amountNumber)) continue;
-
-          candidates.push({
-            amount: amountNumber.toFixed(2),
-            currencyCode: rate.currencyCode,
-            methodName: String(method.name || "Shipping"),
-            profileName,
-            amountNumber,
-            conditions: parseDeliveryConditions(method.methodConditions),
-          });
-        }
+    table[countryCode] = rawTiers.map((rawTier, index) => {
+      if (!rawTier || typeof rawTier !== "object" || Array.isArray(rawTier)) {
+        throw new Error(`Shipping tier ${index + 1} for ${countryCode} must be an object`);
       }
-    }
-  }
 
-  return candidates;
-}
+      const tier = rawTier as { min?: unknown; max?: unknown; amount?: unknown };
+      const min = Number(tier.min);
+      const max =
+        tier.max === undefined || tier.max === null || tier.max === ""
+          ? undefined
+          : Number(tier.max);
+      const amountNumber = Number(tier.amount);
 
-type DeliveryRateCondition = {
-  field: string;
-  operator: string;
-  value: number | null;
-};
+      if (!Number.isInteger(min) || min < 1) {
+        throw new Error(`Shipping tier ${index + 1} for ${countryCode} has an invalid min`);
+      }
+      if (max !== undefined && (!Number.isInteger(max) || max < min)) {
+        throw new Error(`Shipping tier ${index + 1} for ${countryCode} has an invalid max`);
+      }
+      if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+        throw new Error(`Shipping tier ${index + 1} for ${countryCode} has an invalid amount`);
+      }
 
-function parseDeliveryConditions(value: unknown): DeliveryRateCondition[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.map((condition) => {
-    const node = condition as {
-      field?: string;
-      operator?: string;
-      conditionCriteria?: {
-        amount?: string;
-        value?: number;
+      return {
+        min,
+        ...(max ? { max } : {}),
+        amount: amountNumber.toFixed(2),
       };
-    };
-    const rawValue =
-      node.conditionCriteria?.value ?? Number(node.conditionCriteria?.amount);
-    return {
-      field: String(node.field || ""),
-      operator: String(node.operator || ""),
-      value: Number.isFinite(rawValue) ? Number(rawValue) : null,
-    };
-  });
-}
+    });
+  }
 
-function conditionsMatchItemCount(
-  conditions: DeliveryRateCondition[],
-  itemCount: number,
-): boolean {
-  if (conditions.length === 0) return true;
-
-  return conditions.every((condition) => {
-    if (condition.value === null) return false;
-
-    if (condition.field !== "TOTAL_WEIGHT") {
-      return false;
-    }
-
-    switch (condition.operator) {
-      case "GREATER_THAN_OR_EQUAL_TO":
-        return itemCount >= condition.value;
-      case "GREATER_THAN":
-        return itemCount > condition.value;
-      case "LESS_THAN_OR_EQUAL_TO":
-        return itemCount <= condition.value;
-      case "LESS_THAN":
-        return itemCount < condition.value;
-      case "EQUAL_TO":
-        return itemCount === condition.value;
-      default:
-        return false;
-    }
-  });
-}
-
-function zoneMatchesDestination(
-  zoneNode: Record<string, unknown>,
-  destination: { countryCode: string; provinceCode: string },
-): boolean {
-  const zone = zoneNode.zone as { countries?: Array<Record<string, unknown>> };
-  const countries = zone?.countries ?? [];
-
-  return countries.some((country) => {
-    const code = country.code as
-      | { countryCode?: string | null; restOfWorld?: boolean | null }
-      | undefined;
-
-    if (code?.restOfWorld) return true;
-    if ((code?.countryCode || "").toUpperCase() !== destination.countryCode) {
-      return false;
-    }
-
-    const provinces = Array.isArray(country.provinces)
-      ? (country.provinces as Array<{ code?: string | null }>)
-      : [];
-
-    if (provinces.length === 0 || !destination.provinceCode) return true;
-    return provinces.some(
-      (province) =>
-        (province.code || "").toUpperCase() === destination.provinceCode,
-    );
-  });
-}
-
-function extractRateProviderPrice(
-  rateProvider: unknown,
-): { amount: string; currencyCode: string } | null {
-  const provider = rateProvider as
-    | {
-        __typename?: string;
-        price?: { amount?: string; currencyCode?: string };
-        fixedFee?: { amount?: string; currencyCode?: string } | null;
-      }
-    | null
-    | undefined;
-
-  const price =
-    provider?.__typename === "DeliveryRateDefinition"
-      ? provider.price
-      : provider?.fixedFee;
-
-  if (!price?.amount || !price.currencyCode) return null;
-  return {
-    amount: price.amount,
-    currencyCode: price.currencyCode,
-  };
+  return table;
 }

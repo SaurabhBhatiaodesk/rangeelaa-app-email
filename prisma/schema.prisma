@@ -64,5 +64,6 @@ model ShopKlaviyoSettings {
   indiaItemTag               String   @default("")
   preorderProductTag         String   @default("")
   allowedShippingCountryCodes String   @default("")
+  shippingRateTable          String   @default("")
   updatedAt                  DateTime @updatedAt
 }

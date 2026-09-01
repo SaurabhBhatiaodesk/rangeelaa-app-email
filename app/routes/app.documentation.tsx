@@ -174,9 +174,10 @@ export default function DocumentationPage() {
             <s-stack gap="small">
               <s-text type="strong">How pending emails are detected</s-text>
               <s-paragraph>
-                The app checks preorder-tagged orders where a status tag exists
-                but the matching email-sent tag is still missing. That means the
-                order needs a Klaviyo event retry.
+                The app checks RTW and Preorder orders where a status tag
+                exists but the matching email-sent tag is still missing. India
+                Direct orders are excluded. That means the order needs a
+                Klaviyo event retry.
               </s-paragraph>
             </s-stack>
           </s-box>
@@ -280,11 +281,33 @@ export default function DocumentationPage() {
             <s-paragraph>
               For Preorder orders, item count uses preorder-tagged line items
               that require shipping. For RTW orders, item count uses physical
-              line items that require shipping. The shipping amount is read from
-              Shopify Shipping profiles for the customer country/province and
-              item quantity. No hardcoded fallback rate is used.
+              line items that require shipping. The app adds the item counts
+              across all qualifying orders for the same customer, then looks up
+              the Canada or USA rate from the Thursday tiered shipping table.
+              Dry Run never sends the invoice email; it only previews the
+              customer, orders, item count, and shipping amount.
             </s-paragraph>
           </s-banner>
+          <s-box padding="base" borderWidth="base" borderRadius="base">
+            <s-stack gap="small">
+              <s-text type="strong">Canada rates (CAD)</s-text>
+              <s-paragraph>
+                1 item: $17.39; 2 items: $19.52; 3 items: $19.75; 4
+                items: $19.99; 5-9 items: $23.26; 10-14 items: $27.26;
+                15-19 items: $29.26; 20+ items: $32.26.
+              </s-paragraph>
+            </s-stack>
+          </s-box>
+          <s-box padding="base" borderWidth="base" borderRadius="base">
+            <s-stack gap="small">
+              <s-text type="strong">USA rates (CAD)</s-text>
+              <s-paragraph>
+                1 item: $18.99; 2 items: $21.99; 3 items: $23.99; 4
+                items: $25.99; 5-9 items: $31.79; 10-14 items: $44.93;
+                15-19 items: $47.93; 20+ items: $51.93.
+              </s-paragraph>
+            </s-stack>
+          </s-box>
         </s-stack>
       ),
     },
@@ -333,7 +356,7 @@ export default function DocumentationPage() {
             <s-paragraph>
               Shipping is not calculated immediately on this tab. If staff holds
               the order for next Thursday, shipping is calculated later in Tab
-              03 using Shopify Shipping profile rates.
+              03 using the Thursday CA/US tiered rate table.
             </s-paragraph>
           </s-banner>
         </s-stack>
@@ -449,8 +472,8 @@ export default function DocumentationPage() {
           </s-list-item>
           <s-list-item>
             If Thursday invoice does not run, check shipping country,
-            Saskatoon, india-direct tag, read_shipping permission, and Shopify
-            Shipping profile rates.
+            Saskatoon, india-direct tag, item count, and the Thursday tiered
+            shipping table.
           </s-list-item>
         </s-unordered-list>
       ),

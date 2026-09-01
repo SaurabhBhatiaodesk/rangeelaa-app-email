@@ -101,9 +101,7 @@ export function parseAllowedShippingCountryCodes(
     .map((code) => code.trim().toUpperCase())
     .filter((code) => /^[A-Z]{2}$/.test(code));
 
-  return parsed.length > 0
-    ? Array.from(new Set(parsed))
-    : [...DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES];
+  return Array.from(new Set([...DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES, ...parsed]));
 }
 
 export function isAllowedShippingCountry(

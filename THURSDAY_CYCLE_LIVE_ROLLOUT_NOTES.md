@@ -56,30 +56,49 @@ Expected live behavior:
 - Single-order draft: `Combined orders: #1234`
 - Combined draft: `Combined orders: #1234, #1235`
 
-### 4. Shipping Count and Dynamic Rate
+### 4. Shipping Count and Tiered Rate
 
 The Thursday cycle now counts physical items that require shipping and excludes orders tagged `india-direct`.
 
-Shipping amount is no longer hardcoded in code or `.env`. It is resolved dynamically from Shopify Shipping profiles using:
+Shipping amount is resolved from Satya's Thursday tiered rate table using:
 
-- destination country/province
-- physical item count based on items that require shipping
-- Shopify delivery profile method conditions
+- destination country (`CA` or `US`)
+- total combined item count across all qualifying orders for the same customer
 
 Safety behavior:
 
 - A `$0.00` shipping draft is blocked.
-- If Shopify only returns zero-dollar rates, the script throws an error instead of creating a zero-dollar invoice.
+- If no tier matches the country/item count, the script throws an error instead of creating an incorrect invoice.
+
+Canada rates (CAD):
+
+- 1 item: `$17.39`
+- 2 items: `$19.52`
+- 3 items: `$19.75`
+- 4 items: `$19.99`
+- 5-9 items: `$23.26`
+- 10-14 items: `$27.26`
+- 15-19 items: `$29.26`
+- 20+ items: `$32.26`
+
+USA rates (CAD):
+
+- 1 item: `$18.99`
+- 2 items: `$21.99`
+- 3 items: `$23.99`
+- 4 items: `$25.99`
+- 5-9 items: `$31.79`
+- 10-14 items: `$44.93`
+- 15-19 items: `$47.93`
+- 20+ items: `$51.93`
 
 ## Dev Store Proof Collected
 
-Dev preview showed:
+Current validation should confirm:
 
-- Orders: `#1030`, `#1028`
-- Items: `2`
-- Shipping: `22.00 CAD`
-
-This confirms the dynamic shipping resolver is reading Shopify Shipping profile rates instead of using the old hardcoded table.
+- RTW and preorder orders for the same customer are grouped.
+- Item count is the combined total across the grouped orders.
+- Shipping is selected from the CA/US tier table for that combined item count.
 
 Earlier dev tests also confirmed:
 
@@ -94,9 +113,8 @@ Earlier dev tests also confirmed:
 Before client confirmation, do this on live:
 
 1. Deploy/release the updated app to the live Rangeelaa store.
-2. Ensure the app has `read_shipping` scope approved on live.
-3. Confirm live Shopify Shipping profiles have the expected paid rates.
-4. Run one controlled live smoke test.
+2. Confirm Settings still has the expected status tags and Klaviyo template IDs.
+3. Run one controlled live smoke test.
 
 ## Live Smoke Test Checklist
 
@@ -108,7 +126,7 @@ Verify these proof points:
 2. The saved draft ID opens the actual Shopify Draft page.
 3. `sidekick.draft_order_id` is filled on the source order.
 4. Draft Notes show `Combined orders: #...`.
-5. Shipping amount is a paid dynamic Shopify profile rate, not `$0.00`.
+5. Shipping amount matches the tiered CA/US table for the total combined item count, not a single-order item count.
 6. `india-direct` orders do not appear in the Thursday preview.
 7. Normal physical items that require shipping are counted for the shipping rate.
 
@@ -124,9 +142,10 @@ The updates cover:
 - writing the draft ID to Sidekick's `sidekick.draft_order_id` metafield
 - adding `Combined orders: #...` to the draft Notes field
 - updating the shipping count logic to use physical items that require shipping and exclude `india-direct` orders
-- resolving the shipping amount dynamically from Shopify Shipping profiles
+- resolving the shipping amount from the Thursday CA/US tier table based on total combined item count
+- keeping Dry Run as preview-only: no invoice email is sent until a live run
 
-We validated the updated behavior on the dev/test store first. After deploying to live, we will run a controlled smoke test and confirm the live proof points: draft link resolves, Sidekick metafield is filled, combined-order note is present, and shipping is calculated from Shopify profiles.
+We validated the updated behavior on the dev/test store first. After deploying to live, we will run a controlled smoke test and confirm the live proof points: draft link resolves, Sidekick metafield is filled, combined-order note is present, and shipping is calculated from the CA/US tier table using the total combined item count.
 
 Thanks!
 ```
