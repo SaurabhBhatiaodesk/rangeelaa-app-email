@@ -680,8 +680,8 @@ function ShippingRateTableEditor({
           <s-text tone="critical">{newCountryError}</s-text>
         )}
         <s-text tone="neutral">
-          Only add a country here if it is also added to "Allowed shipping
-          country codes" above — otherwise its orders never reach the
+          Only add a country here if it is also added to the Allowed shipping
+          country codes setting above — otherwise its orders never reach the
           Thursday cycle and this table is unused for it.
         </s-text>
       </s-stack>
@@ -930,8 +930,8 @@ export default function SettingsPage() {
             <s-stack direction="block" gap="base">
               <s-paragraph>
                 Choose which shipping countries qualify for Thursday invoices
-                and shipping-paid alerts. Leave blank to use the default
-                (Canada + USA). Shipping amounts use the Thursday tiered rate
+                and shipping-paid alerts. Canada and USA are always included.
+                Shipping amounts use the Thursday tiered rate
                 table below by country and total combined item count — every
                 country listed here needs a matching rate table entry, or
                 the Thursday cycle will error for orders shipping there.
@@ -957,10 +957,10 @@ export default function SettingsPage() {
               <s-banner tone="warning" heading="Change with care">
                 <s-paragraph>
                   Edit the tiers below directly — no JSON needed. Leave
-                  "Items to" blank on the tier that should have no upper
+                  Items to blank on the tier that should have no upper
                   limit (e.g. 20+ items) — row order does not matter, the
                   app always checks tiers with a limit before the
-                  open-ended one. Use "Reset to defaults" at the bottom of
+                  open-ended one. Use Reset to defaults at the bottom of
                   the page to restore the built-in CA/US rates.
                 </s-paragraph>
               </s-banner>
