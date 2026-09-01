@@ -425,16 +425,30 @@ function RateTierTable({
   onFieldChange,
   onAddRow,
   onRemoveRow,
+  onRemoveTable,
 }: {
   title: string;
   rows: TierRow[];
   onFieldChange: (rowKey: string, field: TierField, value: string) => void;
   onAddRow: () => void;
   onRemoveRow: (rowKey: string) => void;
+  onRemoveTable?: () => void;
 }) {
   return (
     <s-stack direction="block" gap="small-200">
-      <s-text type="strong">{title}</s-text>
+      <s-stack direction="inline" gap="small-200" alignItems="center">
+        <s-text type="strong">{title}</s-text>
+        {onRemoveTable && (
+          <s-button
+            type="button"
+            variant="tertiary"
+            tone="critical"
+            onClick={onRemoveTable}
+          >
+            Remove country
+          </s-button>
+        )}
+      </s-stack>
       <s-table>
         <s-table-header-row>
           <s-table-header listSlot="primary">Items from</s-table-header>
@@ -504,6 +518,15 @@ function RateTierTable({
   );
 }
 
+const COUNTRY_TABLE_TITLES: Record<string, string> = {
+  CA: "Canada rates (CAD)",
+  US: "USA rates (CAD)",
+};
+
+function countryTitle(code: string): string {
+  return COUNTRY_TABLE_TITLES[code] || `${code} rates (CAD)`;
+}
+
 function ShippingRateTableEditor({
   value,
   onChange,
@@ -519,91 +542,149 @@ function ShippingRateTableEditor({
     }
   })();
 
-  const [caRows, setCaRows] = useState<TierRow[]>(() =>
-    tiersToRows(parsedInitial.CA ?? []),
+  // CA/US always shown even if empty; any other country present in the
+  // saved table (or added below) gets its own removable section, so the
+  // Thursday cycle's Allowed shipping country codes setting is never
+  // stuck accepting a country this table has no rate for.
+  const [countryRows, setCountryRows] = useState<Record<string, TierRow[]>>(
+    () => {
+      const initial: Record<string, TierRow[]> = {
+        CA: tiersToRows(parsedInitial.CA ?? []),
+        US: tiersToRows(parsedInitial.US ?? []),
+      };
+      for (const [code, tiers] of Object.entries(parsedInitial)) {
+        if (code === "CA" || code === "US") continue;
+        initial[code] = tiersToRows(tiers);
+      }
+      return initial;
+    },
   );
-  const [usRows, setUsRows] = useState<TierRow[]>(() =>
-    tiersToRows(parsedInitial.US ?? []),
-  );
-  const otherCountriesRef = useRef<ShippingRateTable>(
-    Object.fromEntries(
-      Object.entries(parsedInitial).filter(
-        ([code]) => code !== "CA" && code !== "US",
-      ),
-    ),
-  );
+  const [newCountryCode, setNewCountryCode] = useState("");
+  const [newCountryError, setNewCountryError] = useState("");
 
-  const emit = (nextCa: TierRow[], nextUs: TierRow[]) => {
-    const table: ShippingRateTable = {
-      ...otherCountriesRef.current,
-      CA: rowsToTiers(nextCa) as never,
-      US: rowsToTiers(nextUs) as never,
-    };
+  const emit = (next: Record<string, TierRow[]>) => {
+    const table: ShippingRateTable = Object.fromEntries(
+      Object.entries(next).map(([code, rows]) => [code, rowsToTiers(rows)]),
+    ) as never;
     onChange(JSON.stringify(table, null, 2));
   };
 
   const updateRow = (
-    country: "CA" | "US",
+    country: string,
     rowKey: string,
     field: TierField,
     fieldValue: string,
   ) => {
-    if (country === "CA") {
-      const next = caRows.map((row) =>
+    const next = {
+      ...countryRows,
+      [country]: countryRows[country]!.map((row) =>
         row.key === rowKey ? { ...row, [field]: fieldValue } : row,
-      );
-      setCaRows(next);
-      emit(next, usRows);
-    } else {
-      const next = usRows.map((row) =>
-        row.key === rowKey ? { ...row, [field]: fieldValue } : row,
-      );
-      setUsRows(next);
-      emit(caRows, next);
-    }
+      ),
+    };
+    setCountryRows(next);
+    emit(next);
   };
 
-  const addRow = (country: "CA" | "US") => {
+  const addRow = (country: string) => {
     const newRow: TierRow = { key: nextTierRowKey(), min: "", max: "", amount: "" };
-    if (country === "CA") {
-      const next = [...caRows, newRow];
-      setCaRows(next);
-      emit(next, usRows);
-    } else {
-      const next = [...usRows, newRow];
-      setUsRows(next);
-      emit(caRows, next);
-    }
+    const next = {
+      ...countryRows,
+      [country]: [...countryRows[country]!, newRow],
+    };
+    setCountryRows(next);
+    emit(next);
   };
 
-  const removeRow = (country: "CA" | "US", rowKey: string) => {
-    if (country === "CA") {
-      const next = caRows.filter((row) => row.key !== rowKey);
-      setCaRows(next);
-      emit(next, usRows);
-    } else {
-      const next = usRows.filter((row) => row.key !== rowKey);
-      setUsRows(next);
-      emit(caRows, next);
-    }
+  const removeRow = (country: string, rowKey: string) => {
+    const next = {
+      ...countryRows,
+      [country]: countryRows[country]!.filter((row) => row.key !== rowKey),
+    };
+    setCountryRows(next);
+    emit(next);
   };
+
+  const addCountry = () => {
+    const code = newCountryCode.trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(code)) {
+      setNewCountryError("Enter a 2-letter country code, e.g. GB.");
+      return;
+    }
+    if (countryRows[code]) {
+      setNewCountryError(`${code} already has a rate table below.`);
+      return;
+    }
+    const next = { ...countryRows, [code]: [] };
+    setCountryRows(next);
+    emit(next);
+    setNewCountryCode("");
+    setNewCountryError("");
+  };
+
+  const removeCountry = (code: string) => {
+    const next = { ...countryRows };
+    delete next[code];
+    setCountryRows(next);
+    emit(next);
+  };
+
+  const extraCountryCodes = Object.keys(countryRows).filter(
+    (code) => code !== "CA" && code !== "US",
+  );
 
   return (
     <s-stack direction="block" gap="large-200">
       <RateTierTable
-        title="Canada rates (CAD)"
-        rows={caRows}
+        title={countryTitle("CA")}
+        rows={countryRows.CA!}
         onFieldChange={(rowKey, field, val) => updateRow("CA", rowKey, field, val)}
         onAddRow={() => addRow("CA")}
         onRemoveRow={(rowKey) => removeRow("CA", rowKey)}
       />
       <RateTierTable
-        title="USA rates (CAD)"
-        rows={usRows}
+        title={countryTitle("US")}
+        rows={countryRows.US!}
         onFieldChange={(rowKey, field, val) => updateRow("US", rowKey, field, val)}
         onAddRow={() => addRow("US")}
         onRemoveRow={(rowKey) => removeRow("US", rowKey)}
       />
+      {extraCountryCodes.map((code) => (
+        <RateTierTable
+          key={code}
+          title={countryTitle(code)}
+          rows={countryRows[code]!}
+          onFieldChange={(rowKey, field, val) => updateRow(code, rowKey, field, val)}
+          onAddRow={() => addRow(code)}
+          onRemoveRow={(rowKey) => removeRow(code, rowKey)}
+          onRemoveTable={() => removeCountry(code)}
+        />
+      ))}
+      <s-stack direction="block" gap="small-200">
+        <s-text type="strong">Add another country</s-text>
+        <s-stack direction="inline" gap="small-200" alignItems="end">
+          <s-text-field
+            label="Country code"
+            labelAccessibilityVisibility="exclusive"
+            placeholder="e.g. GB"
+            value={newCountryCode}
+            onChange={(event: Event & { currentTarget: { value: string } }) => {
+              setNewCountryCode(event.currentTarget.value);
+              setNewCountryError("");
+            }}
+          />
+          <s-button type="button" variant="secondary" icon="plus" onClick={addCountry}>
+            Add country
+          </s-button>
+        </s-stack>
+        {newCountryError && (
+          <s-text tone="critical">{newCountryError}</s-text>
+        )}
+        <s-text tone="neutral">
+          Only add a country here if it is also added to "Allowed shipping
+          country codes" above — otherwise its orders never reach the
+          Thursday cycle and this table is unused for it.
+        </s-text>
+      </s-stack>
       <input type="hidden" name="shippingRateTable" value={value} />
     </s-stack>
   );
@@ -849,15 +930,17 @@ export default function SettingsPage() {
             <s-stack direction="block" gap="base">
               <s-paragraph>
                 Choose which shipping countries qualify for Thursday invoices
-                and shipping-paid alerts. Canada and USA are always included.
-                Shipping amounts use the Thursday tiered rate table by country
-                and total combined item count.
+                and shipping-paid alerts. Leave blank to use the default
+                (Canada + USA). Shipping amounts use the Thursday tiered rate
+                table below by country and total combined item count — every
+                country listed here needs a matching rate table entry, or
+                the Thursday cycle will error for orders shipping there.
               </s-paragraph>
               <s-text-field
                 label="Allowed shipping country codes"
                 name="allowedShippingCountryCodes"
                 value={field(form, "allowedShippingCountryCodes")}
-                details={`CA and US are always included and cannot be removed here. Use this field only to add extra 2-letter codes on top of them (comma-separated) — but add a matching rate table entry below first, or the Thursday cycle will error for that country. Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
+                details={`Use 2-letter codes, comma-separated (e.g. CA,US). This list is used exactly as entered — leave blank for the default. Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
                 onChange={update("allowedShippingCountryCodes")}
               />
             </s-stack>
