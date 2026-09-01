@@ -419,28 +419,6 @@ function rowsToTiers(
   });
 }
 
-const tierThStyle = {
-  textAlign: "left" as const,
-  padding: "6px 8px",
-  fontSize: 12,
-  color: "#6B6B6B",
-  borderBottom: "1px solid #E1E1E1",
-};
-
-const tierTdStyle = {
-  padding: "4px 6px",
-  verticalAlign: "middle" as const,
-};
-
-const tierInputStyle = {
-  width: "100%",
-  boxSizing: "border-box" as const,
-  border: "1px solid #D7D7D7",
-  borderRadius: 6,
-  padding: "6px 8px",
-  fontSize: 13,
-};
-
 function RateTierTable({
   title,
   rows,
@@ -457,103 +435,71 @@ function RateTierTable({
   return (
     <s-stack direction="block" gap="small-200">
       <s-text type="strong">{title}</s-text>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={tierThStyle}>Items from</th>
-              <th style={tierThStyle}>Items to (blank = no limit)</th>
-              <th style={tierThStyle}>Rate (CAD)</th>
-              <th style={tierThStyle} />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.key}>
-                <td style={tierTdStyle}>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={row.min}
-                    aria-label={`${title} items from`}
-                    onChange={(event) =>
-                      onFieldChange(row.key, "min", event.currentTarget.value)
-                    }
-                    style={tierInputStyle}
-                  />
-                </td>
-                <td style={tierTdStyle}>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    placeholder="No limit"
-                    value={row.max}
-                    aria-label={`${title} items to`}
-                    onChange={(event) =>
-                      onFieldChange(row.key, "max", event.currentTarget.value)
-                    }
-                    style={tierInputStyle}
-                  />
-                </td>
-                <td style={tierTdStyle}>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={row.amount}
-                    aria-label={`${title} rate`}
-                    onChange={(event) =>
-                      onFieldChange(
-                        row.key,
-                        "amount",
-                        event.currentTarget.value,
-                      )
-                    }
-                    style={tierInputStyle}
-                  />
-                </td>
-                <td style={{ ...tierTdStyle, width: 40 }}>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveRow(row.key)}
-                    aria-label={`Remove ${title} tier`}
-                    style={{
-                      appearance: "none",
-                      border: "1px solid #D7D7D7",
-                      background: "#FFFFFF",
-                      borderRadius: 6,
-                      width: 28,
-                      height: 28,
-                      cursor: "pointer",
-                      color: "#8C1D18",
-                    }}
-                  >
-                    ×
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <button
-        type="button"
-        onClick={onAddRow}
-        style={{
-          appearance: "none",
-          border: "1px solid #D7D7D7",
-          background: "#FFFFFF",
-          borderRadius: 6,
-          padding: "6px 12px",
-          cursor: "pointer",
-          width: "fit-content",
-          fontSize: 13,
-        }}
-      >
-        + Add tier
-      </button>
+      <s-table>
+        <s-table-header-row>
+          <s-table-header listSlot="primary">Items from</s-table-header>
+          <s-table-header listSlot="secondary">Items to</s-table-header>
+          <s-table-header listSlot="labeled">Rate (CAD)</s-table-header>
+          <s-table-header listSlot="inline" />
+        </s-table-header-row>
+        <s-table-body>
+          {rows.map((row) => (
+            <s-table-row key={row.key}>
+              <s-table-cell>
+                <s-number-field
+                  label={`${title} items from`}
+                  labelAccessibilityVisibility="exclusive"
+                  min={1}
+                  step={1}
+                  value={row.min}
+                  onChange={(event: Event & { currentTarget: { value: string } }) =>
+                    onFieldChange(row.key, "min", event.currentTarget.value)
+                  }
+                />
+              </s-table-cell>
+              <s-table-cell>
+                <s-number-field
+                  label={`${title} items to`}
+                  labelAccessibilityVisibility="exclusive"
+                  min={1}
+                  step={1}
+                  placeholder="No limit"
+                  value={row.max}
+                  onChange={(event: Event & { currentTarget: { value: string } }) =>
+                    onFieldChange(row.key, "max", event.currentTarget.value)
+                  }
+                />
+              </s-table-cell>
+              <s-table-cell>
+                <s-number-field
+                  label={`${title} rate`}
+                  labelAccessibilityVisibility="exclusive"
+                  min={0}
+                  step={0.01}
+                  prefix="$"
+                  value={row.amount}
+                  onChange={(event: Event & { currentTarget: { value: string } }) =>
+                    onFieldChange(row.key, "amount", event.currentTarget.value)
+                  }
+                />
+              </s-table-cell>
+              <s-table-cell>
+                <s-button
+                  type="button"
+                  variant="tertiary"
+                  tone="critical"
+                  icon="delete"
+                  accessibilityLabel={`Remove ${title} tier`}
+                  onClick={() => onRemoveRow(row.key)}
+                />
+              </s-table-cell>
+            </s-table-row>
+          ))}
+        </s-table-body>
+      </s-table>
+      <s-button type="button" variant="secondary" icon="plus" onClick={onAddRow}>
+        Add tier
+      </s-button>
     </s-stack>
   );
 }
