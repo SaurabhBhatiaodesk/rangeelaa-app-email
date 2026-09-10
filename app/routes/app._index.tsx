@@ -310,6 +310,7 @@ export default function ShippingManagerIndex() {
     customersProcessed: number;
     results: Array<{
       email: string;
+      customerName: string;
       orderNames: string[];
       itemCount: number;
       shippingAmount: string;
@@ -1446,7 +1447,7 @@ export default function ShippingManagerIndex() {
                     <s-table>
                       <s-table-header-row>
                         <s-table-header listSlot="primary">
-                          Email
+                          Customer
                         </s-table-header>
                         <s-table-header listSlot="secondary">
                           Orders
@@ -1467,8 +1468,10 @@ export default function ShippingManagerIndex() {
                                 alignItems="center"
                                 gap="small-200"
                               >
-                                <CustomerAvatar name={row.email} />
-                                <s-text>{row.email}</s-text>
+                                <CustomerAvatar
+                                  name={row.customerName || row.email}
+                                />
+                                <s-text>{row.customerName || row.email}</s-text>
                               </s-stack>
                             </s-table-cell>
                             <s-table-cell>

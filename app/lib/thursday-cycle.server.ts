@@ -225,6 +225,7 @@ function billableItemCount(
 
 export type ThursdayCustomerResult = {
   email: string;
+  customerName: string;
   orderNames: string[];
   itemCount: number;
   shippingAmount: string;
@@ -605,13 +606,21 @@ export async function runThursdayCycle(
         itemCount,
         error: message,
       });
-      results.push({ email, orderNames, itemCount, shippingAmount: "", error: message });
+      results.push({
+        email,
+        customerName,
+        orderNames,
+        itemCount,
+        shippingAmount: "",
+        error: message,
+      });
       continue;
     }
 
     const shippingAmount = shippingRate.amount;
     const row: ThursdayCustomerResult = {
       email,
+      customerName,
       orderNames,
       itemCount,
       shippingAmount: `${shippingAmount} ${shippingRate.currencyCode}`,
