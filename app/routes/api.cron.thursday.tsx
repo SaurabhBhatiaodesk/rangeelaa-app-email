@@ -19,7 +19,7 @@ async function handle(request: Request) {
   const force = url.searchParams.get("force") === "1";
 
   const timeZone = getCronTimeZone();
-  const automationEnabled = process.env.THURSDAY_AUTOMATION_ENABLED !== "false";
+  const automationEnabled = process.env.THURSDAY_AUTOMATION_ENABLED === "true";
 
   if (!force && !automationEnabled) {
     return Response.json({

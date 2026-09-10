@@ -11,13 +11,12 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router";
-import { SaveBar, useAppBridge } from "@shopify/app-bridge-react";
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { ShippingPaidAlert } from "../components/ShippingPaidAlert";
 import {
   applyStatusAction,
-  fetchAwaitingReadinessOrders,
   fetchShippingWorkflowSummary,
   fetchShippingPaidAlerts,
 } from "../lib/orders.server";
@@ -26,19 +25,16 @@ import {
   runThursdayCycle,
 } from "../lib/thursday-cycle.server";
 import { parseAllowedShippingCountryCodes } from "../lib/cycle-shared.server";
-import { getCronTimeZone } from "../lib/cron-schedule.server";
 import { runFridayReset } from "../lib/friday-reset.server";
 import { runStatusEmailPoller } from "../lib/status-emails.server";
 import {
-  hasTag,
   KLAVIYO_STATUS_EMAIL_META,
   type StatusAction,
 } from "../lib/tags";
 import { authenticate } from "../shopify.server";
 import { getShopSettings } from "../lib/klaviyo-settings.server";
 
-type TabId = "preorders" | "emails" | "thursday" | "alerts" | "friday";
-type ThursdayRunMode = "automatic" | "manual";
+type TabId = "emails" | "thursday" | "alerts" | "friday";
 type SessionWithUser = { user?: { id?: string | number } };
 type FetcherResultWithRows = {
   rows?: Array<{
@@ -64,7 +60,14 @@ function isReadShippingPermissionError(message: string | null): boolean {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
-  const tab = (url.searchParams.get("tab") || "preorders") as TabId;
+  const rawTab = url.searchParams.get("tab");
+  const tab: TabId =
+    rawTab === "thursday" ||
+    rawTab === "alerts" ||
+    rawTab === "friday" ||
+    rawTab === "emails"
+      ? rawTab
+      : "emails";
 
   const shopSettings = await getShopSettings(session.shop);
 
@@ -100,12 +103,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   }
 
-  const cronConfigured = Boolean(
-    process.env.CRON_SECRET && process.env.CRON_SHOP,
-  );
-  const thursdayAutomationEnabled =
-    cronConfigured && process.env.THURSDAY_AUTOMATION_ENABLED !== "false";
-
   const base = {
     shop: session.shop,
     shopName,
@@ -120,9 +117,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     klaviyoTemplates: shopSettings.klaviyoTemplates,
     preorderLabels: shopSettings.preorderLabels,
     preorderTags: shopSettings.preorderTags,
-    cronConfigured,
-    thursdayAutomationEnabled,
-    cronTimeZone: getCronTimeZone(),
     loadError: null as string | null,
   };
 
@@ -156,14 +150,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       };
     }
 
-    const preorders = await fetchAwaitingReadinessOrders(
-      admin,
-      shopSettings.preorderTags,
-    );
     return {
       ...base,
       tab,
-      preorders,
+      preorders: [],
       alerts: [],
       thursdayPreview: null,
     };
@@ -319,86 +309,17 @@ export default function ShippingManagerIndex() {
     }>;
   } | null>(null);
 
-  const [preorderSearch, setPreorderSearch] = useState("");
-  const filteredPreorders = (() => {
-    const q = preorderSearch.trim().toLowerCase();
-    if (!q) return data.preorders;
-    return data.preorders.filter((order) => {
-      return (
-        order.name.toLowerCase().includes(q) ||
-        (order.customerName ?? "").toLowerCase().includes(q) ||
-        (order.email ?? "").toLowerCase().includes(q)
-      );
-    });
-  })();
-
-  const pageSize = 10;
-  const currentPage = Math.max(1, Number(searchParams.get("page") || "1"));
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredPreorders.length / pageSize),
-  );
-  const page = Math.min(currentPage, totalPages);
-
-  const pagedPreorders = filteredPreorders.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  );
-
-  const setPage = (nextPage: number) => {
-    startTransition(() => {
-      const params = new URLSearchParams(searchParams);
-      if (nextPage <= 1) {
-        params.delete("page");
-      } else {
-        params.set("page", String(nextPage));
-      }
-      setSearchParams(params);
-    });
-  };
-
-  const handlePreorderSearch = (
-    e: Event & { currentTarget: { value: string } },
-  ) => {
-    setPreorderSearch(e.currentTarget.value);
-    setPage(1);
-  };
-
-  const tab = (searchParams.get("tab") || data.tab || "preorders") as TabId;
+  const rawTab = searchParams.get("tab") || data.tab || "emails";
+  const tab: TabId =
+    rawTab === "thursday" ||
+    rawTab === "alerts" ||
+    rawTab === "friday" ||
+    rawTab === "emails"
+      ? rawTab
+      : "emails";
   const cycleBusy = fetcher.state !== "idle";
   const [manualTestOpen, setManualTestOpen] = useState(false);
   const [thursdayDryRun, setThursdayDryRun] = useState(true);
-  const defaultThursdayRunMode: ThursdayRunMode = data.thursdayAutomationEnabled
-    ? "automatic"
-    : "manual";
-  const thursdayRunModeStorageKey = `rangeelaa:thursdayRunMode:${data.shop}`;
-  const [savedThursdayRunMode, setSavedThursdayRunMode] =
-    useState<ThursdayRunMode>(defaultThursdayRunMode);
-  const [thursdayRunMode, setThursdayRunMode] = useState<ThursdayRunMode>(
-    defaultThursdayRunMode,
-  );
-  const thursdayRunModeDirty = thursdayRunMode !== savedThursdayRunMode;
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(thursdayRunModeStorageKey);
-    if (stored === "automatic" || stored === "manual") {
-      setSavedThursdayRunMode(stored);
-      setThursdayRunMode(stored);
-    } else {
-      setSavedThursdayRunMode(defaultThursdayRunMode);
-      setThursdayRunMode(defaultThursdayRunMode);
-    }
-  }, [defaultThursdayRunMode, thursdayRunModeStorageKey]);
-
-  const saveThursdayRunMode = () => {
-    window.localStorage.setItem(thursdayRunModeStorageKey, thursdayRunMode);
-    setSavedThursdayRunMode(thursdayRunMode);
-    shopify.toast.show("Thursday cycle preference saved.");
-  };
-
-  const discardThursdayRunMode = () => {
-    setThursdayRunMode(savedThursdayRunMode);
-  };
 
   useEffect(() => {
     const freshAlertIds = new Set(data.alerts.map((order) => order.id));
@@ -495,7 +416,7 @@ export default function ShippingManagerIndex() {
   const setTab = (next: TabId) => {
     startTransition(() => {
       const params = new URLSearchParams(searchParams);
-      if (next === "preorders") params.delete("tab");
+      if (next === "emails") params.delete("tab");
       else params.set("tab", next);
       setSearchParams(params);
     });
@@ -525,13 +446,6 @@ export default function ShippingManagerIndex() {
 
   return (
     <s-page heading="Backend Heroku Klaviyo Manager" inlineSize="large">
-      <SaveBar open={thursdayRunModeDirty}>
-        <button variant="primary" onClick={saveThursdayRunMode}>
-          Save
-        </button>
-        <button onClick={discardThursdayRunMode}>Discard</button>
-      </SaveBar>
-
       <s-box paddingBlockEnd="small-200">
         <s-stack
           direction="inline"
@@ -742,190 +656,32 @@ export default function ShippingManagerIndex() {
       <s-section padding="base">
         <s-stack direction="inline" gap="small" alignItems="center">
           <TabButton
-            active={tab === "preorders"}
-            number="01"
-            label="Preorders — Awaiting Readiness"
-            onClick={() => setTab("preorders")}
-          />
-          <TabButton
             active={tab === "emails"}
-            number="02"
+            number="01"
             label="Status emails (Klaviyo)"
             onClick={() => setTab("emails")}
           />
           <TabButton
             active={tab === "thursday"}
-            number="03"
+            number="02"
             label="Thursday invoice"
             onClick={() => setTab("thursday")}
           />
           <TabButton
             active={tab === "alerts"}
-            number="04"
+            number="03"
             label="After shipping paid"
             onClick={() => setTab("alerts")}
           />
           <TabButton
             active={tab === "friday"}
-            number="05"
+            number="04"
             label="Friday reset"
             onClick={() => setTab("friday")}
           />
         </s-stack>
       </s-section>
 
-      {tab === "preorders" && (
-        <s-section heading="Preorders — Awaiting Readiness" padding="base">
-          <s-stack direction="block" gap="large">
-            {data.preorders.length === 0 ? (
-              <s-banner heading="No preorders yet" tone="info">
-                <s-paragraph>
-                  Create a test order in the store to see status actions here.
-                </s-paragraph>
-              </s-banner>
-            ) : (
-              <s-stack direction="block" gap="base">
-                <s-table>
-                  <s-search-field
-                    slot="filters"
-                    label="Search preorders"
-                    labelAccessibilityVisibility="exclusive"
-                    placeholder="Search by order #, customer, or email"
-                    value={preorderSearch}
-                    onChange={handlePreorderSearch}
-                    onInput={handlePreorderSearch}
-                  />
-                  <s-table-header-row>
-                    <s-table-header listSlot="primary">Order</s-table-header>
-                    <s-table-header listSlot="secondary">
-                      Customer
-                    </s-table-header>
-                    <s-table-header listSlot="labeled">Type</s-table-header>
-                  </s-table-header-row>
-                  <s-table-body>
-                    {pagedPreorders.map((order) => (
-                      <s-table-row key={order.id}>
-                        <s-table-cell>
-                          <s-link
-                            href={`shopify://admin/orders/${order.id
-                              .split("/")
-                              .pop()}`}
-                          >
-                            {order.name}
-                          </s-link>
-                        </s-table-cell>
-                        <s-table-cell>
-                          {order.customerName || order.email ? (
-                            <s-stack
-                              direction="inline"
-                              alignItems="center"
-                              gap="small-200"
-                            >
-                              <CustomerAvatar
-                                name={order.customerName || order.email || "?"}
-                              />
-                              <s-text>
-                                {order.customerName || order.email}
-                              </s-text>
-                            </s-stack>
-                          ) : (
-                            "—"
-                          )}
-                        </s-table-cell>
-                        <s-table-cell>
-                          {order.isSkirtDeposit ? (
-                            hasTag(
-                              order.tags,
-                              data.preorderTags.depositFulfilledTag,
-                            ) ? (
-                              <s-badge
-                                tone="neutral"
-                                color="strong"
-                                icon="check-circle"
-                              >
-                                Skirt deposit
-                              </s-badge>
-                            ) : (
-                              <s-badge tone="info" color="strong">
-                                Skirt deposit
-                              </s-badge>
-                            )
-                          ) : hasTag(
-                              order.tags,
-                              data.preorderTags.arrivedInCanadaTag,
-                            ) ||
-                            hasTag(
-                              order.tags,
-                              data.preorderTags.readyToShipTag,
-                            ) ? (
-                            <s-badge
-                              tone="neutral"
-                              color="strong"
-                              icon="check-circle"
-                            >
-                              Preorder
-                            </s-badge>
-                          ) : hasTag(
-                              order.tags,
-                              data.preorderTags.leavingForCanadaTag,
-                            ) ? (
-                            <s-badge tone="caution" color="strong">
-                              Preorder
-                            </s-badge>
-                          ) : hasTag(
-                              order.tags,
-                              data.preorderTags.pieceMadeTag,
-                            ) ? (
-                            <s-badge tone="info" color="strong">
-                              Preorder
-                            </s-badge>
-                          ) : (
-                            <s-badge tone="neutral">Preorder</s-badge>
-                          )}
-                        </s-table-cell>
-                      </s-table-row>
-                    ))}
-                  </s-table-body>
-                </s-table>
-
-                {filteredPreorders.length === 0 && (
-                  <s-paragraph>
-                    No preorders match "{preorderSearch}".
-                  </s-paragraph>
-                )}
-
-                {totalPages > 1 && (
-                  <s-stack
-                    direction="inline"
-                    gap="base"
-                    alignItems="center"
-                    justifyContent="center"
-                    inlineSize="100%"
-                  >
-                    <s-button
-                      variant="secondary"
-                      disabled={page <= 1}
-                      onClick={() => setPage(page - 1)}
-                    >
-                      Previous
-                    </s-button>
-                    <s-text color="subdued">
-                      Page {page} of {totalPages}
-                    </s-text>
-                    <s-button
-                      variant="secondary"
-                      disabled={page >= totalPages}
-                      onClick={() => setPage(page + 1)}
-                    >
-                      Next
-                    </s-button>
-                  </s-stack>
-                )}
-              </s-stack>
-            )}
-          </s-stack>
-        </s-section>
-      )}
 
       {tab === "emails" && (
         <s-section heading="Status emails" padding="base">
@@ -1319,56 +1075,6 @@ export default function ShippingManagerIndex() {
                   </s-paragraph>
                 </s-stack>
 
-                <s-stack direction="inline" gap="small-200">
-                  <s-button
-                    variant={
-                      thursdayRunMode === "automatic" ? "primary" : "secondary"
-                    }
-                    onClick={() => setThursdayRunMode("automatic")}
-                  >
-                    Automatic schedule
-                  </s-button>
-                  <s-button
-                    variant={
-                      thursdayRunMode === "manual" ? "primary" : "secondary"
-                    }
-                    onClick={() => setThursdayRunMode("manual")}
-                  >
-                    Manual run
-                  </s-button>
-                </s-stack>
-
-                {thursdayRunMode === "automatic" ? (
-                  <s-box
-                    background="subdued"
-                    borderWidth="base"
-                    borderStyle="solid"
-                    borderColor="subdued"
-                    borderRadius="base"
-                    padding="base"
-                  >
-                    <s-stack direction="block" gap="small-200">
-                      <s-badge
-                        tone={
-                          data.thursdayAutomationEnabled ? "success" : "warning"
-                        }
-                        color="strong"
-                      >
-                        {data.thursdayAutomationEnabled
-                          ? "Automatic schedule enabled"
-                          : "Automatic schedule disabled"}
-                      </s-badge>
-                      <s-paragraph>
-                        {data.cronConfigured
-                          ? `Heroku Scheduler calls this daily. The app only processes orders on Thursday in ${data.cronTimeZone}.`
-                          : "Set CRON_SECRET and CRON_SHOP before using automatic Thursday runs."}
-                      </s-paragraph>
-                      <s-paragraph>
-                        Schedule settings are managed in Heroku.
-                      </s-paragraph>
-                    </s-stack>
-                  </s-box>
-                ) : (
                   <s-stack direction="block" gap="base">
                     <s-checkbox
                       label="Dry Run"
@@ -1399,7 +1105,6 @@ export default function ShippingManagerIndex() {
                         : "Run Thursday Cycle"}
                     </s-button>
                   </s-stack>
-                )}
               </s-stack>
             </s-box>
 
@@ -1605,15 +1310,6 @@ export default function ShippingManagerIndex() {
                 Run Friday backup now
               </s-button>
             </s-button-group>
-            {!data.cronConfigured && (
-              <s-banner heading="Scheduler settings incomplete" tone="warning">
-                <s-paragraph>
-                  Set <s-text type="strong">CRON_SECRET</s-text> and{" "}
-                  <s-text type="strong">CRON_SHOP</s-text> for automated
-                  Thursday runs.
-                </s-paragraph>
-              </s-banner>
-            )}
           </s-stack>
         </s-section>
       )}

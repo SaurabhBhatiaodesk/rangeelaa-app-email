@@ -22,6 +22,7 @@ export type CycleOrder = {
   createdAt: string;
   displayFinancialStatus: string | null;
   displayFulfillmentStatus: string | null;
+  currentShippingAmount: number;
   shippingCity: string | null;
   shippingCountryCode: string | null;
   shippingAddress: {
@@ -109,9 +110,10 @@ export function isAllowedShippingCountry(
   routingTags: ItemRoutingTags = {},
 ): boolean {
   const country = (order.shippingCountryCode || "").toUpperCase();
-  return parseAllowedShippingCountryCodes(
-    routingTags.allowedShippingCountryCodes,
-  ).includes(country);
+  void routingTags;
+  return DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES.includes(
+    country as (typeof DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES)[number],
+  );
 }
 
 export function isSaskatoon(order: CycleOrder): boolean {

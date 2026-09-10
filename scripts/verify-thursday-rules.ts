@@ -24,6 +24,7 @@ function order(partial: Partial<CycleOrder> & { tags: string[] }): CycleOrder {
     createdAt: partial.createdAt || "2026-01-01T00:00:00Z",
     displayFinancialStatus: partial.displayFinancialStatus ?? "PAID",
     displayFulfillmentStatus: partial.displayFulfillmentStatus ?? "UNFULFILLED",
+    currentShippingAmount: partial.currentShippingAmount ?? 0,
     shippingCity: partial.shippingCity ?? "Toronto",
     shippingCountryCode: partial.shippingCountryCode ?? "CA",
     shippingAddress: null,
@@ -82,11 +83,11 @@ const sask = order({
 assert(isSaskatoon(sask), "Saskatoon detect");
 assert(isAllowedShippingCountry(sask), "CA shipping");
 assert(
-  isAllowedShippingCountry(
+  !isAllowedShippingCountry(
     order({ tags: [], shippingCountryCode: "GB" }),
     { allowedShippingCountryCodes: "CA,US,GB" },
   ),
-  "GB shipping can be allowed from settings",
+  "GB shipping should be excluded from Thursday cycle",
 );
 
 assert(countCanadaDispatchItems([canadaItem, indiaItem]) === 2, "count canada only");

@@ -929,18 +929,15 @@ export default function SettingsPage() {
           <s-section heading="Shipping eligibility" padding="base">
             <s-stack direction="block" gap="base">
               <s-paragraph>
-                Choose which shipping countries qualify for Thursday invoices
-                and shipping-paid alerts. Canada and USA are always included.
-                Shipping amounts use the Thursday tiered rate
-                table below by country and total combined item count — every
-                country listed here needs a matching rate table entry, or
-                the Thursday cycle will error for orders shipping there.
+                Thursday invoices currently include Canada and USA only.
+                Europe and other countries are excluded from the Thursday
+                preview and live run.
               </s-paragraph>
               <s-text-field
                 label="Allowed shipping country codes"
                 name="allowedShippingCountryCodes"
                 value={field(form, "allowedShippingCountryCodes")}
-                details={`Use 2-letter codes, comma-separated (e.g. CA,US). This list is used exactly as entered — leave blank for the default. Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
+                details={`Canada/USA only for Thursday invoices. Default: ${data.defaults.tags.allowedShippingCountryCodes}`}
                 onChange={update("allowedShippingCountryCodes")}
               />
             </s-stack>

@@ -35,6 +35,11 @@ const CYCLE_ORDER_FIELDS = `
   tags
   displayFinancialStatus
   displayFulfillmentStatus
+  currentShippingPriceSet {
+    shopMoney {
+      amount
+    }
+  }
   customer {
     id
     displayName
@@ -74,6 +79,9 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
     | null;
   const shipping = node.shippingAddress as Record<string, string | null> | null;
   const metafield = node.metafield as { value?: string } | null;
+  const currentShippingPriceSet = node.currentShippingPriceSet as
+    | { shopMoney?: { amount?: string | number | null } | null }
+    | null;
   const lineEdges =
     (
       node.lineItems as {
@@ -102,6 +110,9 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
       (node.displayFinancialStatus as string | null) ?? null,
     displayFulfillmentStatus:
       (node.displayFulfillmentStatus as string | null) ?? null,
+    currentShippingAmount: Number(
+      currentShippingPriceSet?.shopMoney?.amount ?? 0,
+    ),
     shippingCity: shipping?.city ?? null,
     shippingCountryCode: shipping?.countryCodeV2 ?? null,
     shippingAddress: shipping
@@ -186,6 +197,7 @@ function isPool1Preorder(
   if (!hasTag(order.tags, leavingForCanadaTag)) return false;
   if (!hasTag(order.tags, arrivedInCanadaTag)) return false;
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
+  if (order.currentShippingAmount > 0) return false;
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
   return countPreorderProductShippingItems(order, routingTags) > 0;
@@ -202,6 +214,7 @@ function isPool2Rtw(
   if (financial !== "PAID") return false;
   if (fulfillment !== "UNFULFILLED") return false;
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
+  if (order.currentShippingAmount > 0) return false;
   if (isSaskatoon(order)) return false;
   if (!isAllowedShippingCountry(order, routingTags)) return false;
   if (countRtwShippingItems(order) < 1) {

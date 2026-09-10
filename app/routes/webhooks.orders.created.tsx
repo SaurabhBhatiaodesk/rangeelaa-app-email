@@ -1,6 +1,9 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
-import { processShippingPaidTagging } from "../lib/orders-updated-webhook.server";
+import {
+  processShippingPaidTagging,
+  processStatusEmailTags,
+} from "../lib/orders-updated-webhook.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { topic, shop, admin, payload } = await authenticate.webhook(request);
@@ -21,9 +24,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     note?: string | null;
     note_attributes?: Array<{ name: string; value: string }>;
     tags?: string | string[];
+    email?: string | null;
   };
 
   try {
+    await processStatusEmailTags(admin, orderPayload, shop);
     await processShippingPaidTagging(admin, orderPayload, shop);
   } catch (error) {
     console.error(`[orders/create] handler error:`, error);
