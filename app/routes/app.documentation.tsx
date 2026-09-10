@@ -96,69 +96,7 @@ export default function DocumentationPage() {
   const tabItems: AccordionItem[] = [
     {
       id: "tab-01",
-      title: "01. Preorders - Awaiting Readiness",
-      tone: "info",
-      content: (
-        <s-stack gap="base">
-          <s-banner tone="info" heading="What this tab does">
-            <s-paragraph>
-              This tab is a read-only view. Status buttons live in the Shipping
-              Manager app. This app does not add Piece Made, Leaving for Canada,
-              or Arrived in Canada tags from this page.
-            </s-paragraph>
-          </s-banner>
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack gap="small">
-              <s-text type="strong">How status emails are triggered</s-text>
-              <s-unordered-list>
-                <s-list-item>
-                  Staff clicks the status button in the Shipping Manager app.
-                </s-list-item>
-                <s-list-item>
-                  Shipping Manager adds the matching Shopify order tag:
-                  piece-made-notified, leaving-for-canada-notified, or
-                  arrived-in-canada-notified.
-                </s-list-item>
-                <s-list-item>
-                  This app listens for the tag, sends the matching Klaviyo
-                  event, then adds the matching email-sent tag so it is not sent
-                  again.
-                </s-list-item>
-              </s-unordered-list>
-            </s-stack>
-          </s-box>
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack gap="small">
-              <s-text type="strong">Preorder classification</s-text>
-              <s-ordered-list>
-                <s-list-item>
-                  An order is Preorder when any line item has product tag group,
-                  dispatch skirt, or the configured preorder product tag
-                  normally Web Saree.
-                </s-list-item>
-                <s-list-item>
-                  An order is RTW when it is not India Direct and does not have
-                  preorder product tags.
-                </s-list-item>
-                <s-list-item>
-                  An order is India Direct when any line item has product tag
-                  india or the order has order tag india-direct.
-                </s-list-item>
-              </s-ordered-list>
-            </s-stack>
-          </s-box>
-          <s-banner tone="warning" heading="Good to know">
-            <s-paragraph>
-              This app should not duplicate Shipping Manager buttons. It only
-              reacts after the tags already exist on the Shopify order.
-            </s-paragraph>
-          </s-banner>
-        </s-stack>
-      ),
-    },
-    {
-      id: "tab-02",
-      title: "02. Status emails (Klaviyo)",
+      title: "01. Status emails (Klaviyo)",
       tone: "neutral",
       content: (
         <s-stack gap="base">
@@ -208,8 +146,8 @@ export default function DocumentationPage() {
       ),
     },
     {
-      id: "tab-03",
-      title: "03. Thursday invoice",
+      id: "tab-02",
+      title: "02. Thursday invoice",
       tone: "success",
       content: (
         <s-stack gap="base">
@@ -244,27 +182,11 @@ export default function DocumentationPage() {
           </s-box>
           <s-box padding="base" borderWidth="base" borderRadius="base">
             <s-stack gap="small">
-              <s-text type="strong">Automatic schedule and manual run</s-text>
-              <s-unordered-list>
-                <s-list-item>
-                  <s-text type="strong">Automatic schedule</s-text>: Heroku
-                  Scheduler calls the app daily. The app only processes real
-                  invoices on Thursday in the configured timezone.
-                </s-list-item>
-                <s-list-item>
-                  <s-text type="strong">Manual run</s-text>: staff can run the
-                  same Thursday cycle manually from the app when needed.
-                </s-list-item>
-              </s-unordered-list>
-            </s-stack>
-          </s-box>
-          <s-box padding="base" borderWidth="base" borderRadius="base">
-            <s-stack gap="small">
-              <s-text type="strong">Dry Run and real run</s-text>
+              <s-text type="strong">Manual run, Dry Run, and real run</s-text>
               <s-unordered-list>
                 <s-list-item>
                   <s-text type="strong">Dry Run on</s-text>: preview only. It
-                  shows customer email, order numbers, item count, and
+                  shows customer name, customer email, order numbers, item count, and
                   shipping amount. No invoice, email, or tag changes are made.
                 </s-list-item>
                 <s-list-item>
@@ -279,13 +201,16 @@ export default function DocumentationPage() {
           </s-box>
           <s-banner tone="warning" heading="Shipping calculation">
             <s-paragraph>
-              For Preorder orders, item count uses preorder-tagged line items
-              that require shipping. For RTW orders, item count uses physical
-              line items that require shipping. The app adds the item counts
-              across all qualifying orders for the same customer, then looks up
-              the Canada or USA rate from the Thursday tiered shipping table.
-              Dry Run never sends the invoice email; it only previews the
-              customer, orders, item count, and shipping amount.
+              Thursday invoices are manual only. The app includes Canada and
+              USA shipping addresses only. It excludes Saskatoon, India Direct
+              orders, Europe and other unsupported countries, orders that
+              already paid shipping through checkout, orders already marked
+              shipping-paid, and orders already marked thursday-email-sent.
+              The app adds the item counts across all qualifying orders for the
+              same customer, then looks up the Canada or USA rate from the
+              Thursday tiered shipping table. Dry Run never sends the invoice
+              email; it only previews the customer, orders, item count, and
+              shipping amount.
             </s-paragraph>
           </s-banner>
           <s-box padding="base" borderWidth="base" borderRadius="base">
@@ -312,8 +237,8 @@ export default function DocumentationPage() {
       ),
     },
     {
-      id: "tab-04",
-      title: "04. After shipping paid",
+      id: "tab-03",
+      title: "03. After shipping paid",
       tone: "info",
       content: (
         <s-stack gap="base">
@@ -363,8 +288,8 @@ export default function DocumentationPage() {
       ),
     },
     {
-      id: "tab-05",
-      title: "05. Friday reset",
+      id: "tab-04",
+      title: "04. Friday reset",
       tone: "caution",
       content: (
         <s-stack gap="base">

@@ -1,5 +1,4 @@
 export type ShippingMenuStep =
-  | "preorders"
   | "emails"
   | "thursday"
   | "alerts"
@@ -13,38 +12,32 @@ const MENU_ITEMS: Array<{
   href: string;
 }> = [
   {
-    id: "preorders",
+    id: "emails",
     number: "01",
-    label: "Preorders — Awaiting Readiness",
+    label: "Status emails (Klaviyo)",
     href: "/app",
   },
   {
-    id: "emails",
-    number: "02",
-    label: "Status emails (Klaviyo)",
-    href: "/app?tab=emails",
-  },
-  {
     id: "thursday",
-    number: "03",
+    number: "02",
     label: "Thursday invoice",
     href: "/app?tab=thursday",
   },
   {
     id: "alerts",
-    number: "04",
+    number: "03",
     label: "After shipping paid",
     href: "/app?tab=alerts",
   },
   {
     id: "friday",
-    number: "05",
+    number: "04",
     label: "Friday reset",
     href: "/app?tab=friday",
   },
   {
     id: "settings",
-    number: "06",
+    number: "05",
     label: "Settings",
     href: "/app/settings",
   },

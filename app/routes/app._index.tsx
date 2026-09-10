@@ -952,7 +952,8 @@ export default function ShippingManagerIndex() {
                           <s-text type="strong">test@gmail.com</s-text>
                         </s-list-item>
                         <s-list-item>
-                          Use a Canadian shipping address (not Saskatoon).
+                          Use a Canada or USA shipping address. For Canada,
+                          city must not be Saskatoon.
                         </s-list-item>
                         <s-list-item>
                           Keep the order Paid and Unfulfilled.
@@ -990,7 +991,7 @@ export default function ShippingManagerIndex() {
                           Run)
                         </s-list-item>
                         <s-list-item>
-                          Confirm Preview shows: 1 customer, customer email,
+                          Confirm Preview shows: 1 customer, customer name,
                           order number, item count, shipping amount
                         </s-list-item>
                         <s-list-item>
@@ -1043,7 +1044,9 @@ export default function ShippingManagerIndex() {
                           </s-list-item>
                           <s-list-item>order is Paid;</s-list-item>
                           <s-list-item>order is Unfulfilled;</s-list-item>
-                          <s-list-item>shipping country is Canada;</s-list-item>
+                          <s-list-item>
+                            shipping country is Canada or USA;
+                          </s-list-item>
                           <s-list-item>city is not Saskatoon;</s-list-item>
                           <s-list-item>required tags are present;</s-list-item>
                           <s-list-item>
