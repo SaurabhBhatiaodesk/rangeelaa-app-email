@@ -15,6 +15,7 @@ import {
   getShopSettings,
   type PreorderWorkflowTags,
 } from "./klaviyo-settings.server";
+import { buildThursdayWaitUrl } from "./thursday-wait-link.server";
 import {
   classifyOrder,
   countPreorderProductShippingItems,
@@ -688,10 +689,11 @@ export async function runThursdayCycle(
         }
       }
 
-      const waitUrl =
-        process.env.THURSDAY_WAIT_URL ||
-        process.env.SHOPIFY_APP_URL ||
-        "";
+      const waitUrl = buildThursdayWaitUrl({
+        shop: options.shop,
+        draftId: draft.id,
+        orderIds: orders.map((order) => order.id),
+      });
 
       console.log("Thursday sending invoice email", {
         email,

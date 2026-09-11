@@ -19,15 +19,16 @@ async function handle(request: Request) {
   const force = url.searchParams.get("force") === "1";
 
   const timeZone = getCronTimeZone();
-  const automationEnabled = process.env.THURSDAY_AUTOMATION_ENABLED === "true";
+  const cronLiveEnabled = process.env.THURSDAY_CRON_LIVE_ENABLED === "true";
 
-  if (!force && !automationEnabled) {
+  if (!dryRun && !cronLiveEnabled) {
     return Response.json({
       ok: true,
       dryRun,
       skipped: true,
       timeZone,
-      message: "Thursday cycle skipped: automatic Thursday cycle is disabled",
+      message:
+        "Thursday live cron skipped: live Thursday cycle is manual-only",
     });
   }
 

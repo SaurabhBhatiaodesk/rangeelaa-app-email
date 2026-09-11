@@ -187,6 +187,63 @@ export async function voidThursdayDraftForOrder(
   return { ok: true, voided: true };
 }
 
+export async function applyThursdayWaitChoice(
+  admin: AdminGraphql,
+  options: { shop: string; orderIds: string[] },
+): Promise<{
+  ok: boolean;
+  ordersProcessed: number;
+  draftsDeleted: number;
+  errors: string[];
+}> {
+  const settings = await getShopSettings(options.shop);
+  const thursdayEmailSentTag = settings.preorderTags.thursdayEmailSentTag;
+  const pushedToNextWeekendTag = settings.preorderTags.pushedToNextWeekendTag;
+  const errors: string[] = [];
+  const deletedDrafts = new Set<string>();
+  let ordersProcessed = 0;
+  let draftsDeleted = 0;
+
+  for (const orderId of options.orderIds) {
+    ordersProcessed += 1;
+
+    try {
+      const metafield = await fetchOrderDraftMetafield(admin, orderId);
+      const draftId = metafield?.value;
+
+      if (draftId && !deletedDrafts.has(draftId)) {
+        const del = await deleteDraftOrder(admin, draftId);
+        if (!del.ok) {
+          errors.push(`${orderId}: ${del.error}`);
+        } else {
+          draftsDeleted += 1;
+          deletedDrafts.add(draftId);
+        }
+      }
+
+      const removed = await removeTag(admin, orderId, thursdayEmailSentTag);
+      if (!removed.ok) errors.push(`${orderId}: ${removed.error}`);
+
+      const added = await addTag(admin, orderId, pushedToNextWeekendTag);
+      if (!added.ok) errors.push(`${orderId}: ${added.error}`);
+
+      const cleared = await clearThursdayDraftMetafield(admin, orderId);
+      if (!cleared.ok) errors.push(`${orderId}: ${cleared.error}`);
+    } catch (error) {
+      errors.push(
+        `${orderId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    ordersProcessed,
+    draftsDeleted,
+    errors,
+  };
+}
+
 /**
  * Friday backup reset (primary path = Shopify Flow tags + orders/updated void).
  *
