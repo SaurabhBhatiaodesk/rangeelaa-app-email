@@ -89,9 +89,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return page("Link unavailable", verified.error, 400);
   }
 
+  // Compare host only: behind a proxy (e.g. Heroku) req.protocol/url.origin
+  // often reports http even though the public site is https, so a strict
+  // origin match here rejects every legitimate confirmation.
   const origin = request.headers.get("origin");
-  if (origin && origin !== url.origin) {
-    return page("Request unavailable", "Please confirm your choice from the shipping email link.", 403);
+  if (origin) {
+    let originHost: string | null = null;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      return page("Request unavailable", "Please confirm your choice from the shipping email link.", 403);
+    }
+    if (originHost !== url.host) {
+      return page("Request unavailable", "Please confirm your choice from the shipping email link.", 403);
+    }
   }
   let confirmed = false;
   try {

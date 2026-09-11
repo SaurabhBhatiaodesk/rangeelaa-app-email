@@ -302,7 +302,15 @@ await check('POST requires confirmation and rejects foreign origins', async () =
   assert.equal((await action({ request: confirmRequest(link, { confirm: 'wait' }, 'https://unrelated.invalid') })).status, 403);
   assert.equal((await action({ request: new Request(link, { method: 'DELETE' }) })).status, 405);
   assert.equal(calls.length, 0);
-  return 'PASS: no mutations without valid confirmation';
+
+  // Behind a proxy (e.g. Heroku) req.protocol/url.origin often reports http
+  // even though the public site is https; same host with a different
+  // protocol must still be accepted or every real confirmation click 403s.
+  const sameHostDifferentProtocol = link.replace('https://', 'http://');
+  const res = await action({ request: confirmRequest(link, { confirm: 'wait' }, sameHostDifferentProtocol.slice(0, new URL(sameHostDifferentProtocol).origin.length)) });
+  assert.notEqual(res.status, 403);
+
+  return 'PASS: no mutations without valid confirmation; proxy protocol mismatch is not rejected';
 });
 
 await check('Invalid, tampered and expired links are rejected', async () => {
