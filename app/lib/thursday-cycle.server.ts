@@ -28,6 +28,13 @@ const SIDEKICK_META_NAMESPACE = "sidekick";
 const SIDEKICK_META_DRAFT_KEY = "draft_order_id";
 const SIDEKICK_META_THURSDAY_DRAFT_KEY = "thursday_draft_id";
 
+const CYCLE_LINE_ITEM_FIELDS = `
+  title
+  quantity
+  requiresShipping
+  product { tags }
+`;
+
 const CYCLE_ORDER_FIELDS = `
   id
   name
@@ -59,19 +66,50 @@ const CYCLE_ORDER_FIELDS = `
   metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {
     value
   }
-  lineItems(first: 250) {
+  lineItems(first: 10) {
     edges {
       node {
-        title
-        quantity
-        requiresShipping
-        product {
-          tags
-        }
+        ${CYCLE_LINE_ITEM_FIELDS}
       }
     }
+    pageInfo { hasNextPage endCursor }
   }
 `;
+
+async function loadRemainingLineItems(
+  admin: AdminGraphql,
+  node: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  type Connection = {
+    edges: Array<{ node: Record<string, unknown> }>;
+    pageInfo?: { hasNextPage: boolean; endCursor: string | null };
+  };
+  let connection = node.lineItems as Connection;
+  const edges = [...(connection?.edges ?? [])];
+  const seenCursors = new Set<string>();
+  while (connection?.pageInfo?.hasNextPage) {
+    const after = connection.pageInfo.endCursor;
+    if (!after || seenCursors.has(after)) {
+      throw new Error(`Cannot finish loading line items for ${node.name}`);
+    }
+    seenCursors.add(after);
+    const json = await graphqlJson(admin, `#graphql
+      query ThursdayCycleLineItems($id: ID!, $after: String!) {
+        order(id: $id) {
+          lineItems(first: 100, after: $after) {
+            edges { node { ${CYCLE_LINE_ITEM_FIELDS} } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }`, { id: node.id, after });
+    connection = json.data?.order?.lineItems;
+    if (!connection?.edges || !connection.pageInfo) {
+      throw new Error(`Cannot finish loading line items for ${node.name}`);
+    }
+    edges.push(...connection.edges);
+  }
+  return { ...node, lineItems: { edges } };
+}
 
 function mapOrder(node: Record<string, unknown>): CycleOrder {
   const tags = normalizeTags(node.tags as string[] | string);
@@ -139,13 +177,14 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
 async function fetchCycleOrders(
   admin: AdminGraphql,
   query: string,
-  first = 75,
 ): Promise<CycleOrder[]> {
   const orders: CycleOrder[] = [];
   let after: string | null = null;
-  const pageSize = Math.min(250, first);
+  // Keep the nested line-item query small; paginate both connections completely.
+  const pageSize = 25;
+  const seenCursors = new Set<string>();
 
-  while (orders.length < first) {
+  while (true) {
     const json = await graphqlJson(
       admin,
       `#graphql
@@ -163,23 +202,27 @@ async function fetchCycleOrders(
             }
           }
         }`,
-      { first: Math.min(pageSize, first - orders.length), after, query },
+      { first: pageSize, after, query },
     );
 
     const connection = json.data?.orders;
+    if (!connection?.edges || !connection.pageInfo) {
+      throw new Error("Cannot finish loading Thursday orders");
+    }
     const edges = connection?.edges ?? [];
-    orders.push(
-      ...edges.map((e: { node: Record<string, unknown> }) =>
-        mapOrder(e.node),
-      ),
-    );
+    for (const edge of edges) {
+      orders.push(mapOrder(await loadRemainingLineItems(admin, edge.node)));
+    }
 
     if (!connection?.pageInfo?.hasNextPage) break;
     after =
       connection.pageInfo.endCursor ??
       edges[edges.length - 1]?.cursor ??
       null;
-    if (!after) break;
+    if (!after || seenCursors.has(after)) {
+      throw new Error("Cannot finish loading Thursday orders: pagination did not advance");
+    }
+    seenCursors.add(after);
   }
 
   return orders;
@@ -656,6 +699,14 @@ export async function runThursdayCycle(
         shippingProfileName: shippingRate.profileName,
       });
 
+      // Remove last cycle's wait marker before linking a new invoice; the webhook
+      // must not interpret the new draft metafield as an outstanding wait request.
+      for (const order of orders) {
+        if (hasTag(order.tags, workflowTags.pushedToNextWeekendTag)) {
+          await removeTags(admin, order.id, [workflowTags.pushedToNextWeekendTag]);
+        }
+      }
+
       let draft = await resolveExistingDraftForOrders(admin, orders);
       if (draft) {
         console.log("Thursday cycle reusing existing draft", {
@@ -733,6 +784,7 @@ export async function runThursdayCycle(
           ? `Invoice created; email pending: ${emailError}`
           : "Invoice created; email not sent.";
         row.emailSent = false;
+        results.push(row);
         continue;
       }
 
@@ -740,9 +792,6 @@ export async function runThursdayCycle(
         await addTags(admin, order.id, [workflowTags.thursdayEmailSentTag]);
 
         const toRemove: string[] = [];
-        if (hasTag(order.tags, workflowTags.pushedToNextWeekendTag)) {
-          toRemove.push(workflowTags.pushedToNextWeekendTag);
-        }
         if (hasTag(order.tags, workflowTags.holdForNextCycleTag)) {
           toRemove.push(workflowTags.holdForNextCycleTag);
         }

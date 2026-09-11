@@ -189,46 +189,98 @@ export async function voidThursdayDraftForOrder(
 
 export async function applyThursdayWaitChoice(
   admin: AdminGraphql,
-  options: { shop: string; orderIds: string[] },
+  options: { shop: string; draftId: string; orderIds: string[] },
 ): Promise<{
   ok: boolean;
   ordersProcessed: number;
   draftsDeleted: number;
   errors: string[];
+  unavailable?: boolean;
 }> {
   const settings = await getShopSettings(options.shop);
   const thursdayEmailSentTag = settings.preorderTags.thursdayEmailSentTag;
   const pushedToNextWeekendTag = settings.preorderTags.pushedToNextWeekendTag;
   const errors: string[] = [];
-  const deletedDrafts = new Set<string>();
   let ordersProcessed = 0;
   let draftsDeleted = 0;
+  const pendingOrderIds: string[] = [];
 
-  for (const orderId of options.orderIds) {
-    ordersProcessed += 1;
+  if (!options.draftId || options.orderIds.length === 0) {
+    return { ok: false, unavailable: true, ordersProcessed, draftsDeleted, errors: ["Missing invoice details"] };
+  }
 
-    try {
-      const metafield = await fetchOrderDraftMetafield(admin, orderId);
-      const draftId = metafield?.value;
-
-      if (draftId && !deletedDrafts.has(draftId)) {
-        const del = await deleteDraftOrder(admin, draftId);
-        if (!del.ok) {
-          errors.push(`${orderId}: ${del.error}`);
-        } else {
-          draftsDeleted += 1;
-          deletedDrafts.add(draftId);
+  // Validate every original before deleting the single shared invoice.
+  for (const orderId of new Set(options.orderIds)) {
+    const json = await graphqlJson(admin, `#graphql
+      query ThursdayWaitOrder($id: ID!) {
+        order(id: $id) {
+          tags
+          cancelledAt
+          metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") { value }
         }
+      }`, { id: orderId });
+    const order = json.data?.order;
+    const tags = normalizeTags(order?.tags);
+    const currentDraftId = order?.metafield?.value;
+    if (!order || order.cancelledAt || hasTag(tags, settings.preorderTags.shippingPaidTag)) {
+      errors.push(`${orderId}: order is missing, cancelled, or shipping is already paid`);
+    } else if (currentDraftId && currentDraftId !== options.draftId) {
+      errors.push(`${orderId}: this link belongs to an older shipping invoice`);
+    } else if (!currentDraftId) {
+      if (!hasTag(tags, pushedToNextWeekendTag)) {
+        errors.push(`${orderId}: this invoice is no longer linked to the order`);
+      } else if (hasTag(tags, thursdayEmailSentTag)) {
+        // Resume cleanup if the webhook already removed the deleted draft reference.
+        pendingOrderIds.push(orderId);
+      }
+    } else {
+      pendingOrderIds.push(orderId);
+    }
+  }
+  if (errors.length) {
+    return { ok: false, unavailable: true, ordersProcessed, draftsDeleted, errors };
+  }
+  if (pendingOrderIds.length === 0) {
+    return { ok: true, ordersProcessed, draftsDeleted, errors };
+  }
+
+  const json = await graphqlJson(admin, `#graphql
+    query ThursdayWaitDraft($id: ID!) {
+      draftOrder(id: $id) { id status order { id } }
+    }`, { id: options.draftId });
+  const draft = json.data?.draftOrder;
+  if (draft && (!['OPEN', 'INVOICE_SENT'].includes(draft.status) || draft.order)) {
+    return { ok: false, unavailable: true, ordersProcessed, draftsDeleted, errors: ["This shipping invoice has already been completed"] };
+  }
+  if (draft) {
+    const deleted = await deleteDraftOrder(admin, options.draftId);
+    if (!deleted.ok) {
+      return { ok: false, ordersProcessed, draftsDeleted, errors: [deleted.error] };
+    }
+    draftsDeleted = 1;
+  }
+
+  for (const orderId of pendingOrderIds) {
+    try {
+      // Keep the sent tag until cleanup succeeds, so a retry cannot create another invoice.
+      const added = await addTag(admin, orderId, pushedToNextWeekendTag);
+      if (!added.ok) {
+        errors.push(`${orderId}: ${added.error}`);
+        continue;
+      }
+
+      const cleared = await clearThursdayDraftMetafield(admin, orderId);
+      if (!cleared.ok) {
+        errors.push(`${orderId}: ${cleared.error}`);
+        continue;
       }
 
       const removed = await removeTag(admin, orderId, thursdayEmailSentTag);
-      if (!removed.ok) errors.push(`${orderId}: ${removed.error}`);
-
-      const added = await addTag(admin, orderId, pushedToNextWeekendTag);
-      if (!added.ok) errors.push(`${orderId}: ${added.error}`);
-
-      const cleared = await clearThursdayDraftMetafield(admin, orderId);
-      if (!cleared.ok) errors.push(`${orderId}: ${cleared.error}`);
+      if (!removed.ok) {
+        errors.push(`${orderId}: ${removed.error}`);
+        continue;
+      }
+      ordersProcessed += 1;
     } catch (error) {
       errors.push(
         `${orderId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -362,6 +414,7 @@ export async function runFridayReset(
         const del = await deleteDraftOrder(admin, draftId);
         if (!del.ok) {
           errors.push(`${order.name}: ${del.error}`);
+          continue;
         } else {
           draftsDeleted += 1;
           deletedDrafts.add(draftId);

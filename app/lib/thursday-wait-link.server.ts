@@ -40,7 +40,7 @@ function sign(payload: string): string {
 }
 
 function safeEqualHex(a: string, b: string): boolean {
-  if (!a || !b || a.length !== b.length) return false;
+  if (!/^[a-f0-9]{64}$/i.test(a) || !/^[a-f0-9]{64}$/i.test(b)) return false;
   return timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
 }
 
@@ -83,7 +83,7 @@ export function verifyThursdayWaitUrl(url: URL):
   }
 
   const expiresAt = Number(exp);
-  if (!Number.isFinite(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) {
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
     return { ok: false, error: "This wait link has expired." };
   }
 

@@ -25,7 +25,8 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "verify:thursday-rules": "tsx scripts/verify-thursday-rules.ts"
+    "verify:thursday-rules": "tsx scripts/verify-thursday-rules.ts",
+    "verify:thursday-workflow": "node scripts/verify-thursday-workflow.mjs"
   },
   "type": "module",
   "engines": {

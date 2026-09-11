@@ -378,6 +378,14 @@ export async function processPushedToNextWeekendVoid(
       return;
     }
 
+    // Delivery may be delayed until after a newer cycle removed the wait marker.
+    if (
+      !hasTag(order.tags ?? [], settings.preorderTags.pushedToNextWeekendTag) ||
+      hasTag(order.tags ?? [], settings.preorderTags.shippingPaidTag)
+    ) {
+      return;
+    }
+
     const result = await voidThursdayDraftForOrder(admin, orderGid);
     if (!result.ok) {
       console.error(

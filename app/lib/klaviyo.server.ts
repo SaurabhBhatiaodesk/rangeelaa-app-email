@@ -161,7 +161,9 @@ export async function sendThursdayInvoiceEmail(options: {
   if (!options.invoiceUrl) {
     return { ok: false, error: "Draft order has no invoiceUrl" };
   }
-
+  if (!options.waitUrl) {
+    return { ok: false, error: "Thursday wait link is not configured. Check the app URL and signing secret." };
+  }
 
   return createKlaviyoEvent({
     apiKey: options.apiKey,
