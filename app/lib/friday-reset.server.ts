@@ -252,13 +252,14 @@ export async function applyThursdayWaitChoice(
   if (draft && (!['OPEN', 'INVOICE_SENT'].includes(draft.status) || draft.order)) {
     return { ok: false, unavailable: true, ordersProcessed, draftsDeleted, errors: ["This shipping invoice has already been completed"] };
   }
-  if (draft) {
-    const deleted = await deleteDraftOrder(admin, options.draftId);
-    if (!deleted.ok) {
-      return { ok: false, ordersProcessed, draftsDeleted, errors: [deleted.error] };
-    }
-    draftsDeleted = 1;
+  // Always attempt the delete rather than trusting this read to have found
+  // the draft: a stale/missing read here must not silently skip deletion
+  // while still clearing every order's reference to it below.
+  const deleted = await deleteDraftOrder(admin, options.draftId);
+  if (!deleted.ok) {
+    return { ok: false, ordersProcessed, draftsDeleted, errors: [deleted.error] };
   }
+  draftsDeleted = 1;
 
   for (const orderId of pendingOrderIds) {
     try {
