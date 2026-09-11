@@ -89,21 +89,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return page("Link unavailable", verified.error, 400);
   }
 
-  // Compare host only: behind a proxy (e.g. Heroku) req.protocol/url.origin
-  // often reports http even though the public site is https, so a strict
-  // origin match here rejects every legitimate confirmation.
-  const origin = request.headers.get("origin");
-  if (origin) {
-    let originHost: string | null = null;
-    try {
-      originHost = new URL(origin).host;
-    } catch {
-      return page("Request unavailable", "Please confirm your choice from the shipping email link.", 403);
-    }
-    if (originHost !== url.host) {
-      return page("Request unavailable", "Please confirm your choice from the shipping email link.", 403);
-    }
-  }
+  // No origin/CSRF check here: email clients, link scanners, and proxies
+  // send this request from all kinds of contexts (missing Origin, "null"
+  // Origin, mismatched proxy protocol/host), so any such check ends up
+  // rejecting real customer confirmations. The link itself is signed,
+  // time-limited, and re-validated against live order/draft state below,
+  // which is what actually protects this endpoint.
   let confirmed = false;
   try {
     confirmed = (await request.formData()).get("confirm") === "wait";

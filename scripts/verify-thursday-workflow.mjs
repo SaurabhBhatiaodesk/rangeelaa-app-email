@@ -293,24 +293,25 @@ await check('Each failed cleanup step can be retried', async () => {
   return 'PASS: all four failures retain recoverable state';
 });
 
-await check('POST requires confirmation and rejects foreign origins', async () => {
+await check('POST requires confirmation regardless of Origin header', async () => {
   const { admin, calls } = waitAdmin();
   const w = world({ 'app/shopify.server.ts': { unauthenticated: { admin: async () => ({ admin }) } } });
   const link = w.load('app/lib/thursday-wait-link.server.ts').buildThursdayWaitUrl({ shop, draftId: oldDraft, orderIds: [orderId] });
   const action = w.load('app/routes/shipping.wait.tsx').action;
   assert.equal((await action({ request: confirmRequest(link, {}) })).status, 400);
-  assert.equal((await action({ request: confirmRequest(link, { confirm: 'wait' }, 'https://unrelated.invalid') })).status, 403);
   assert.equal((await action({ request: new Request(link, { method: 'DELETE' }) })).status, 405);
   assert.equal(calls.length, 0);
 
-  // Behind a proxy (e.g. Heroku) req.protocol/url.origin often reports http
-  // even though the public site is https; same host with a different
-  // protocol must still be accepted or every real confirmation click 403s.
-  const sameHostDifferentProtocol = link.replace('https://', 'http://');
-  const res = await action({ request: confirmRequest(link, { confirm: 'wait' }, sameHostDifferentProtocol.slice(0, new URL(sameHostDifferentProtocol).origin.length)) });
-  assert.notEqual(res.status, 403);
+  // Real confirmations arrive with all kinds of Origin headers (missing,
+  // "null", a mismatched proxy host/protocol) - none of that may 403 a
+  // otherwise-valid, signed confirmation. The signature + live order/draft
+  // state check is what actually protects this endpoint.
+  for (const origin of [undefined, 'null', 'https://unrelated.invalid', link.replace('https://', 'http://')]) {
+    const res = await action({ request: confirmRequest(link, { confirm: 'wait' }, origin) });
+    assert.notEqual(res.status, 403, `origin=${origin}`);
+  }
 
-  return 'PASS: no mutations without valid confirmation; proxy protocol mismatch is not rejected';
+  return 'PASS: no mutations without valid confirmation; Origin header never rejects a signed link';
 });
 
 await check('Invalid, tampered and expired links are rejected', async () => {
