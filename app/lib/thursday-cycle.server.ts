@@ -7,6 +7,7 @@ import {
   type LineItemInfo,
   graphqlJson,
   isAllowedShippingCountry,
+  isCancelledOrRefundedOrder,
   isSaskatoon,
   passesCycleTagGate,
 } from "./cycle-shared.server";
@@ -31,6 +32,7 @@ const SIDEKICK_META_THURSDAY_DRAFT_KEY = "thursday_draft_id";
 const CYCLE_LINE_ITEM_FIELDS = `
   title
   quantity
+  currentQuantity
   requiresShipping
   product { tags }
 `;
@@ -40,6 +42,7 @@ const CYCLE_ORDER_FIELDS = `
   name
   email
   createdAt
+  cancelledAt
   tags
   displayFinancialStatus
   displayFulfillmentStatus
@@ -133,11 +136,11 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
     const product = li.product as { tags?: string[] | string } | null;
     return {
       title: String(li.title || ""),
-      quantity: Number(li.quantity || 0),
+      quantity: Number(li.currentQuantity ?? li.quantity ?? 0),
       requiresShipping: li.requiresShipping !== false,
       productTags: normalizeTags(product?.tags),
     };
-  });
+  }).filter((item) => item.quantity > 0);
 
   return {
     id: node.id as string,
@@ -145,6 +148,7 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
     email: (node.email as string | null) || null,
     tags,
     createdAt: node.createdAt as string,
+    cancelledAt: (node.cancelledAt as string | null) ?? null,
     displayFinancialStatus:
       (node.displayFinancialStatus as string | null) ?? null,
     displayFulfillmentStatus:
@@ -184,7 +188,7 @@ async function fetchCycleOrders(
   const pageSize = 25;
   const seenCursors = new Set<string>();
 
-  while (true) {
+  for (;;) {
     const json = await graphqlJson(
       admin,
       `#graphql
@@ -236,6 +240,7 @@ function isPool1Preorder(
   gateTags: CycleGateTags,
   routingTags: PreorderWorkflowTags,
 ): boolean {
+  if (isCancelledOrRefundedOrder(order)) return false;
   if (classifyOrder(order, routingTags) !== "preorder") return false;
   if (!hasTag(order.tags, pieceMadeTag)) return false;
   if (!hasTag(order.tags, leavingForCanadaTag)) return false;
@@ -252,6 +257,7 @@ function isPool2Rtw(
   gateTags: CycleGateTags,
   routingTags: PreorderWorkflowTags,
 ): boolean {
+  if (isCancelledOrRefundedOrder(order)) return false;
   if (classifyOrder(order, routingTags) !== "rtw") return false;
   const financial = (order.displayFinancialStatus || "").toUpperCase();
   const fulfillment = (order.displayFulfillmentStatus || "").toUpperCase();
@@ -510,7 +516,15 @@ async function createShippingDraft(
 async function fetchDraftOrder(
   admin: AdminGraphql,
   draftId: string,
-): Promise<{ id: string; name: string | null; invoiceUrl: string | null } | null> {
+): Promise<{
+  id: string;
+  name: string | null;
+  invoiceUrl: string | null;
+  status: string;
+  order: { displayFinancialStatus: string } | null;
+  customAttributes: Array<{ key: string; value: string }>;
+  totalPriceSet: { presentmentMoney: { amount: string; currencyCode: string } };
+} | null> {
   const json = await graphqlJson(
     admin,
     `#graphql
@@ -519,6 +533,10 @@ async function fetchDraftOrder(
           id
           name
           invoiceUrl
+          status
+          order { displayFinancialStatus }
+          customAttributes { key value }
+          totalPriceSet { presentmentMoney { amount currencyCode } }
         }
       }`,
     { id: draftId },
@@ -530,27 +548,51 @@ async function fetchDraftOrder(
 async function resolveExistingDraftForOrders(
   admin: AdminGraphql,
   orders: CycleOrder[],
+  expectedAmount: string,
+  expectedCurrency: string,
 ): Promise<{ id: string; invoiceUrl: string | null; name: string } | null> {
   const linkedDraftIds = Array.from(
     new Set(orders.map((order) => order.thursdayDraftId).filter(Boolean)),
   ) as string[];
 
-  if (linkedDraftIds.length === 0) return null;
-
-  if (linkedDraftIds.length > 1) {
+  const activeDrafts = [];
+  for (const draftId of linkedDraftIds) {
+    const draft = await fetchDraftOrder(admin, draftId);
+    if (!draft?.id) {
+      throw new Error(`Cannot verify linked Thursday draft ${draftId}`);
+    }
+    if (draft.status === "COMPLETED" && draft.order?.displayFinancialStatus === "REFUNDED") {
+      continue;
+    }
+    if (draft.status === "COMPLETED") {
+      throw new Error(`Thursday draft ${draftId} is already completed and is not fully refunded`);
+    }
+    activeDrafts.push(draft);
+  }
+  if (activeDrafts.length === 0) return null;
+  if (activeDrafts.length > 1) {
     throw new Error(
       `Orders are already linked to multiple Thursday drafts: ${linkedDraftIds.join(", ")}`,
     );
   }
 
-  const draftId = linkedDraftIds[0]!;
-  const draft = await fetchDraftOrder(admin, draftId);
-  if (!draft?.id) {
+  const draft = activeDrafts[0];
+  const sourceIds = new Set(
+    (draft.customAttributes ?? []).find((attr) => attr.key === "source_order_ids")?.value
+      .split(",").map((id) => id.trim()).filter(Boolean) ?? [],
+  );
+  const expectedIds = new Set(orders.map((order) => order.id));
+  const payable = draft.totalPriceSet?.presentmentMoney;
+  if (
+    sourceIds.size !== expectedIds.size ||
+    ![...sourceIds].every((id) => expectedIds.has(id)) ||
+    payable?.currencyCode !== expectedCurrency ||
+    Number(payable?.amount) !== Number(expectedAmount)
+  ) {
     throw new Error(
-      `Order is already linked to Thursday draft ${draftId}, but the draft could not be found. Clear the draft metafield or run Friday reset before creating a new one.`,
+      `Unpaid Thursday draft ${draft.id} no longer matches the eligible orders or shipping rate. Defer the old unpaid invoice before running the cycle again.`,
     );
   }
-
   return {
     id: draft.id,
     name: draft.name || draft.id,
@@ -707,7 +749,7 @@ export async function runThursdayCycle(
         }
       }
 
-      let draft = await resolveExistingDraftForOrders(admin, orders);
+      let draft = await resolveExistingDraftForOrders(admin, orders, shippingAmount, shippingRate.currencyCode);
       if (draft) {
         console.log("Thursday cycle reusing existing draft", {
           email,

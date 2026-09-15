@@ -3,6 +3,7 @@ import { authenticate } from "../shopify.server";
 import {
   processPushedToNextWeekendVoid,
   processShippingPaidTagging,
+  processShippingInvoiceRefund,
   processStatusEmailTags,
 } from "../lib/orders-updated-webhook.server";
 
@@ -18,7 +19,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (!admin) {
     console.error(`[orders/updated] No admin API client available for ${shop}`);
-    return new Response();
+    return new Response("Admin API unavailable", { status: 503 });
   }
 
   try {
@@ -29,8 +30,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     await processShippingPaidTagging(admin, payload, shop);
+    await processShippingInvoiceRefund(admin, payload, shop);
   } catch (error) {
-    console.error(`[orders/updated] shipping-paid tagging failed:`, error);
+    console.error(`[orders/updated] shipping payment reconciliation failed:`, error);
+    return new Response("Shipping payment reconciliation failed", { status: 503 });
   }
 
   try {

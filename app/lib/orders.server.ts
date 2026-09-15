@@ -8,6 +8,7 @@ import type { PreorderWorkflowTags } from "./klaviyo-settings.server";
 import {
   graphqlJson,
   isAllowedShippingCountry,
+  isCancelledOrRefundedOrder,
   type LineItemInfo,
 } from "./cycle-shared.server";
 import {
@@ -51,6 +52,8 @@ const ORDER_NODE_FIELDS = `
   name
   email
   createdAt
+  cancelledAt
+  displayFinancialStatus
   tags
   displayFulfillmentStatus
   customer {
@@ -65,6 +68,7 @@ const ORDER_NODE_FIELDS = `
       node {
         title
         quantity
+        currentQuantity
         requiresShipping
         product {
           tags
@@ -97,7 +101,9 @@ async function fetchOrdersByQuery(
 
   const edges = json.data?.orders?.edges ?? [];
 
-  return edges.map((edge: { node: Record<string, unknown> }) => {
+  return edges.filter((edge: { node: { cancelledAt?: string | null; displayFinancialStatus?: string | null } }) =>
+    !isCancelledOrRefundedOrder(edge.node),
+  ).map((edge: { node: Record<string, unknown> }) => {
     const node = edge.node;
     const tags = normalizeTags(node.tags as string[] | string);
     const customer = node.customer as { displayName?: string } | null;
@@ -116,11 +122,11 @@ async function fetchOrdersByQuery(
       const product = line.product as { tags?: string[] | string } | null;
       return {
         title: String(line.title || ""),
-        quantity: Number(line.quantity || 0),
+        quantity: Number(line.currentQuantity ?? line.quantity ?? 0),
         requiresShipping: line.requiresShipping !== false,
         productTags: normalizeTags(product?.tags),
       };
-    });
+    }).filter((item) => item.quantity > 0);
 
     return {
       id: node.id as string,

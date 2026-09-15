@@ -9,6 +9,7 @@ import {
   type ProductTaggedOrder,
 } from "./product-eligibility.server";
 import type { StatusEmailAction } from "./tags";
+import { reconcileLinkedShippingOrders } from "./shipping-invoice-payment.server";
 
 type WebhookNoteAttribute = {
   name?: string;
@@ -79,7 +80,7 @@ function extractLinkedOrderIdsFromPayload(
 
   if (Array.isArray(orderPayload?.note_attributes)) {
     for (const attr of orderPayload.note_attributes) {
-      if (attr?.name === "linked_order_ids" && attr?.value) {
+      if ((attr?.name === "linked_order_ids" || attr?.name === "source_order_ids") && attr?.value) {
         parseLinkedOrderIds(attr.value).forEach((id) => ids.add(id));
       }
     }
@@ -123,7 +124,7 @@ function extractLinkedOrderIdsFromPayload(
 function normalizeOrderGid(id: string): string | null {
   const value = String(id || "").trim();
   if (!value) return null;
-  if (value.startsWith("gid://")) return value;
+  if (/^gid:\/\/shopify\/Order\/\d+$/.test(value)) return value;
   if (/^\d+$/.test(value)) return `gid://shopify/Order/${value}`;
   return null;
 }
@@ -230,114 +231,48 @@ export async function processShippingPaidTagging(
   orderPayload: OrderWebhookPayload,
   shop: string,
 ) {
-  const invoiceId =
-    String(orderPayload.admin_graphql_api_id || orderPayload.id || "unknown");
-  const financialStatus = String(orderPayload.financial_status || "").toLowerCase();
+  if (String(orderPayload.financial_status).toLowerCase() !== "paid") return;
+  await processShippingInvoicePayment(admin, orderPayload, shop);
+}
 
-  if (financialStatus !== "paid") {
-    console.log("shipping-paid tagging skipped; invoice not paid:", invoiceId);
-    return;
-  }
+export async function processShippingInvoiceRefund(
+  admin: AdminGraphql,
+  orderPayload: OrderWebhookPayload,
+  shop: string,
+) {
+  if (String(orderPayload.financial_status).toLowerCase() !== "refunded") return;
+  await processShippingInvoicePayment(admin, orderPayload, shop);
+}
 
-  console.log("paid invoice detected:", invoiceId);
-
+async function processShippingInvoicePayment(
+  admin: AdminGraphql,
+  orderPayload: OrderWebhookPayload,
+  shop: string,
+) {
+  const invoiceId = normalizeOrderGid(String(orderPayload.admin_graphql_api_id || orderPayload.id || ""));
+  if (!invoiceId) return;
+  // Webhooks can arrive out of order. Never reapply a stale paid/refunded payload.
+  const json = await graphqlJson(admin, `#graphql
+    query ShippingInvoicePayment($id: ID!) {
+      order(id: $id) {
+        id tags cancelledAt displayFinancialStatus note
+        customAttributes { key value }
+      }
+    }`, { id: invoiceId });
+  const invoice = json.data?.order;
+  if (!invoice) throw new Error(`Cannot load shipping invoice ${invoiceId}`);
+  const tags = normalizeTags(invoice.tags);
+  if (!hasTag(tags, "rangeela-thursday-shipping") && !hasTag(tags, "shipping-invoice")) return;
+  const financialStatus = invoice.displayFinancialStatus;
+  if (financialStatus !== "PAID" && financialStatus !== "REFUNDED") return;
+  if (financialStatus === "PAID" && invoice.cancelledAt) return;
+  const linkedOrderIds = [...new Set(extractLinkedOrderIdsFromPayload({
+    tags, note: invoice.note,
+    note_attributes: (invoice.customAttributes ?? []).map((attr: { key: string; value: string }) => ({ name: attr.key, value: attr.value })),
+  }).map(normalizeOrderGid).filter((id): id is string => Boolean(id)))];
+  if (!linkedOrderIds.length) throw new Error(`Shipping invoice ${invoiceId} has no linked original orders`);
   const settings = await getShopSettings(shop);
-  const shippingPaidTag = settings.preorderTags.shippingPaidTag;
-  const linkedOrderIds = extractLinkedOrderIdsFromPayload(orderPayload);
-  if (linkedOrderIds.length === 0) {
-    console.log("No linked original orders found on paid invoice:", invoiceId);
-    return;
-  }
-
-  console.log(
-    "linked original orders found for paid invoice:",
-    invoiceId,
-    linkedOrderIds,
-  );
-
-  for (const linkedId of linkedOrderIds) {
-    const linkedOrderGid = normalizeOrderGid(linkedId);
-    if (!linkedOrderGid) {
-      console.log("skipped linked order because ID is invalid:", linkedId);
-      continue;
-    }
-
-    try {
-      const linkedOrder = await fetchOrderForClassification(admin, linkedOrderGid);
-      if (
-        !linkedOrder ||
-        classifyOrder(linkedOrder, settings.preorderTags) === "india_direct"
-      ) {
-        console.log(
-          `skipped tagging order ${linkedId} (India Direct or not found)`,
-        );
-        continue;
-      }
-
-      const fetchRes = (await graphqlJson(
-        admin,
-        `#graphql
-          query GetOrderTags($id: ID!) {
-            order(id: $id) {
-              id
-              tags
-            }
-          }
-        `,
-        { id: linkedOrderGid },
-      )) as OrderTagsResponse;
-
-      const existingTags = fetchRes.data?.order?.tags ?? [];
-      const tagsArray = Array.isArray(existingTags)
-        ? existingTags
-        : String(existingTags || "")
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean);
-
-      if (
-        tagsArray.some(
-          (t: string) => t.toLowerCase() === shippingPaidTag.toLowerCase(),
-        )
-      ) {
-        console.log(
-          `skipped tagging order ${linkedId} (already has ${shippingPaidTag})`,
-        );
-        continue;
-      }
-
-      const updatedTags = Array.from(
-        new Set([...tagsArray, shippingPaidTag]),
-      ).join(", ");
-
-      const updateRes = (await graphqlJson(
-        admin,
-        `#graphql
-          mutation OrderUpdate($input: OrderInput!) {
-            orderUpdate(input: $input) {
-              order { id tags }
-              userErrors { field message }
-            }
-          }
-        `,
-        {
-          input: {
-            id: linkedOrderGid,
-            tags: updatedTags,
-          },
-        },
-      )) as OrderTagsResponse;
-
-      const userErrors = updateRes.data?.orderUpdate?.userErrors;
-      if (Array.isArray(userErrors) && userErrors.length > 0) {
-        console.error("Failed to add shipping-paid tag to order", linkedId, userErrors);
-      } else {
-        console.log("shipping-paid tag added to order", linkedId);
-      }
-    } catch (error) {
-      console.error("Failed to process linked order", linkedId, error);
-    }
-  }
+  await reconcileLinkedShippingOrders(admin, { id: invoiceId, financialStatus, linkedOrderIds }, settings.preorderTags);
 }
 
 /**

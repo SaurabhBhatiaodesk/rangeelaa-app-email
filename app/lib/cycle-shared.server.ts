@@ -20,6 +20,7 @@ export type CycleOrder = {
   email: string | null;
   tags: string[];
   createdAt: string;
+  cancelledAt?: string | null;
   displayFinancialStatus: string | null;
   displayFulfillmentStatus: string | null;
   currentShippingAmount: number;
@@ -103,6 +104,16 @@ export function parseAllowedShippingCountryCodes(
     .filter((code) => /^[A-Z]{2}$/.test(code));
 
   return Array.from(new Set([...DEFAULT_ALLOWED_SHIPPING_COUNTRY_CODES, ...parsed]));
+}
+
+export function isCancelledOrRefundedOrder(order: {
+  cancelledAt?: string | null;
+  displayFinancialStatus?: string | null;
+}): boolean {
+  return Boolean(order.cancelledAt) ||
+    ["REFUNDED", "PARTIALLY_REFUNDED", "VOIDED"].includes(
+      (order.displayFinancialStatus || "").toUpperCase(),
+    );
 }
 
 export function isAllowedShippingCountry(

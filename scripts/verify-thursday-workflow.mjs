@@ -82,14 +82,14 @@ function fixture(id, quantity = 1, options = {}) {
   const productTags = options.productTags ?? ['skirt'];
   return {
     id: `gid://shopify/Order/${id}`, name: `#${id}`, email: 'local-test@example.invalid', createdAt: '2026-09-01T00:00:00Z',
-    tags: options.tags ?? [], displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED',
+    tags: options.tags ?? [], displayFinancialStatus: options.financial ?? 'PAID', displayFulfillmentStatus: options.fulfillment ?? 'UNFULFILLED', cancelledAt: options.cancelledAt ?? null,
     currentShippingPriceSet: { shopMoney: { amount: options.shipping ?? '0' } }, customer: { id: 'gid://shopify/Customer/1', displayName: 'Review Customer' },
     shippingAddress: { countryCodeV2: options.country ?? 'CA', city: options.city ?? 'Toronto', firstName: 'Review', lastName: 'Customer' }, metafield: null,
-    lineItems: { edges: [{ node: { title: 'Review product', quantity, requiresShipping: true, product: { tags: productTags } } }] },
+    lineItems: { edges: [{ node: { title: 'Review product', quantity, currentQuantity: options.currentQuantity ?? quantity, requiresShipping: true, product: { tags: productTags } } }] },
   };
 }
 
-function cycleAdmin(nodes) {
+function cycleAdmin(nodes, { drafts = {}, createdDraftId = oldDraft } = {}) {
   const calls = [];
   const admin = { graphql: async (query, { variables = {} } = {}) => {
     calls.push({ query, variables });
@@ -104,11 +104,20 @@ function cycleAdmin(nodes) {
       const offset = Number(variables.after);
       const selected = edges.slice(offset, offset + 100);
       data = { order: { lineItems: { edges: selected, pageInfo: { hasNextPage: offset + selected.length < edges.length, endCursor: String(offset + selected.length) } } } };
-    } else if (query.includes('CreateThursdayDraft')) data = { draftOrderCreate: { draftOrder: { id: oldDraft, name: '#D100', invoiceUrl: 'https://review.invalid/invoice' }, userErrors: [] } };
-    else if (query.includes('VerifyThursdayDraft')) data = { draftOrder: { id: oldDraft, name: '#D100', invoiceUrl: 'https://review.invalid/invoice' } };
-    else if (query.includes('SetThursdayDraftMetafield')) data = { metafieldsSet: { userErrors: [] } };
-    else if (query.includes('CycleTagsAdd')) data = { tagsAdd: { userErrors: [] } };
-    else if (query.includes('CycleTagsRemove')) data = { tagsRemove: { userErrors: [] } };
+    } else if (query.includes('CreateThursdayDraft')) data = { draftOrderCreate: { draftOrder: { id: createdDraftId, name: '#D100', invoiceUrl: 'https://review.invalid/invoice' }, userErrors: [] } };
+    else if (query.includes('VerifyThursdayDraft')) data = { draftOrder: drafts[variables.id] ?? { id: variables.id, name: '#D100', invoiceUrl: 'https://review.invalid/invoice', status: 'OPEN', order: null } };
+    else if (query.includes('SetThursdayDraftMetafield')) {
+      for (const meta of variables.metafields) nodes.find((node) => node.id === meta.ownerId).metafield = { value: meta.value };
+      data = { metafieldsSet: { userErrors: [] } };
+    } else if (query.includes('CycleTagsAdd')) {
+      const node = nodes.find((node) => node.id === variables.id);
+      node.tags = [...new Set([...node.tags, ...variables.tags])];
+      data = { tagsAdd: { userErrors: [] } };
+    } else if (query.includes('CycleTagsRemove')) {
+      const node = nodes.find((node) => node.id === variables.id);
+      node.tags = node.tags.filter((tag) => !variables.tags.includes(tag));
+      data = { tagsRemove: { userErrors: [] } };
+    }
     else throw new Error(`Unexpected cycle operation: ${query}`);
     return { json: async () => ({ data }) };
   } };
@@ -399,6 +408,313 @@ await check('Friday reset preserves references when invoice deletion fails', asy
   assert.equal(state.orders.get(orderId).draftId, oldDraft);
   assert.ok(state.orders.get(orderId).tags.includes('thursday-email-sent'));
   return 'PASS: Friday deletion failure does not orphan the invoice';
+});
+
+const readyTags = ['piece-made-notified', 'leaving-for-canada-notified', 'arrived-in-canada-notified'];
+const invoiceId = 'gid://shopify/Order/999';
+const refundPayload = { id: '999', financial_status: 'refunded' };
+
+function paymentAdmin(nodes = [fixture(1)]) {
+  const calls = [];
+  const failures = new Set();
+  const originals = new Map(nodes.map((node) => {
+    node.tags = [...node.tags, 'shipping-paid', 'thursday-email-sent', 'unrelated-client-tag'];
+    node.metafield = { value: oldDraft };
+    return [node.id, node];
+  }));
+  const invoice = { id: invoiceId, tags: ['rangeela-thursday-shipping', 'shipping-invoice'], displayFinancialStatus: 'REFUNDED', customAttributes: [{ key: 'linked_order_ids', value: JSON.stringify([...originals.keys()]) }] };
+  const drafts = new Map([[oldDraft, invoiceId], [newDraft, 'gid://shopify/Order/888']]);
+  const admin = { graphql: async (query, { variables = {} } = {}) => {
+    calls.push({ query, variables: JSON.parse(JSON.stringify(variables)) });
+    let data;
+    if (query.includes('query ShippingInvoicePayment')) data = { order: invoice };
+    else if (query.includes('query ShippingPaymentOriginal')) {
+      const node = originals.get(variables.id);
+      data = { order: node ? { ...node, draft: node.metafield } : null };
+    } else if (query.includes('query ShippingPaymentDraft')) data = { draftOrder: drafts.has(variables.id) ? { id: variables.id, order: { id: drafts.get(variables.id) } } : null };
+    else if (query.includes('mutation ShippingRefundReceipt')) {
+      const meta = variables.metafields[0];
+      const receipt = JSON.parse(meta.value);
+      const fail = failures.has(`ShippingRefundReceipt:${receipt.state}`);
+      if (!fail) originals.get(meta.ownerId).refund = { value: meta.value };
+      data = { metafieldsSet: { userErrors: fail ? [{ message: 'Receipt rejected' }] : [] } };
+    } else if (query.includes('mutation ShippingRefundTagsRemove')) {
+      const fail = failures.has('ShippingRefundTagsRemove');
+      if (!fail) {
+        const node = originals.get(variables.id);
+        node.tags = node.tags.filter((tag) => !variables.tags.includes(tag));
+      }
+      data = { tagsRemove: { userErrors: fail ? [{ message: 'Tag removal rejected' }] : [] } };
+    } else if (query.includes('mutation ShippingPaymentTagsAdd')) {
+      const fail = failures.has('ShippingPaymentTagsAdd');
+      if (!fail) {
+        const node = originals.get(variables.id);
+        node.tags = [...new Set([...node.tags, ...variables.tags])];
+      }
+      data = { tagsAdd: { userErrors: fail ? [{ message: 'Paid tag rejected' }] : [] } };
+    } else throw new Error(`Unexpected payment operation: ${query}`);
+    return { json: async () => JSON.parse(JSON.stringify({ data })) };
+  } };
+  return { admin, calls, failures, originals, invoice, drafts };
+}
+
+function paymentWorld() {
+  return world({ 'app/lib/send-status-email.server.ts': {} });
+}
+
+await check('Cancelled and refunded originals never enter either Thursday pool', async () => {
+  const nodes = [fixture(1, 2), fixture(2, 4, { productTags: ['group'], tags: readyTags })];
+  for (const productTags of [['dress'], ['group']]) {
+    for (const options of [{ cancelledAt: '2026-09-15T00:00:00Z' }, { financial: 'REFUNDED' }, { financial: 'PARTIALLY_REFUNDED' }, { financial: 'VOIDED' }]) {
+      nodes.push(fixture(nodes.length + 1, 20, { ...options, productTags, tags: [...readyTags, 'hold-for-next-cycle'] }));
+    }
+  }
+  const { admin, calls } = cycleAdmin(nodes);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results[0].orderNames.sort().join(','), '#1,#2');
+  assert.equal(result.results[0].itemCount, 6);
+  assert.equal(result.results[0].shippingAmount, '23.26 CAD');
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: both pools exclude cancelled/refunded/partially-refunded/voided orders, even with a hold override';
+});
+
+await check('Removed units do not affect Thursday counts or classification', async () => {
+  const node = fixture(1, 10, { currentQuantity: 2 });
+  node.lineItems.edges.push({ node: { quantity: 20, currentQuantity: 0, requiresShipping: true, product: { tags: ['india'] } } });
+  const { admin } = cycleAdmin([node, fixture(2, 4, { currentQuantity: 0 })]);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results[0].itemCount, 2);
+  assert.equal(result.results[0].shippingAmount, '19.52 CAD');
+  assert.equal(result.results[0].orderNames.join(','), '#1');
+  return 'PASS: current quantities used; zero-quantity removed lines cannot classify or inflate an order';
+});
+
+await check('Status item lists and dashboard omit cancelled and refunded originals', async () => {
+  const nodes = [fixture(1, 5, { currentQuantity: 2, productTags: ['group'], tags: readyTags }), fixture(2, 8, { productTags: ['group'], tags: readyTags, cancelledAt: '2026-09-15T00:00:00Z' }), fixture(3, 9, { productTags: ['group'], tags: readyTags, financial: 'REFUNDED' })];
+  const admin = { graphql: async () => ({ json: async () => ({ data: { orders: { edges: nodes.map((node) => ({ node })) } } }) }) };
+  const w = world();
+  const tags = (await w.load('app/lib/klaviyo-settings.server.ts').getShopSettings(shop)).preorderTags;
+  const orders = w.load('app/lib/orders.server.ts');
+  const listed = await orders.fetchAwaitingReadinessOrders(admin, tags);
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].lineItems[0].quantity, 2);
+  assert.equal((await orders.fetchShippingWorkflowSummary(admin, tags)).readyToShipCount, 1);
+  return 'PASS: filtered before list and summary calculation';
+});
+
+await check('Full shipping refund reopens the group without emailing or deleting payment history', async () => {
+  const state = paymentAdmin([fixture(1, 2), fixture(2, 4, { productTags: ['group'], tags: readyTags })]);
+  const apply = paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingInvoiceRefund;
+  await apply(state.admin, refundPayload, shop);
+  for (const node of state.originals.values()) {
+    assert.ok(!node.tags.includes('shipping-paid') && !node.tags.includes('thursday-email-sent'));
+    assert.ok(node.tags.includes('unrelated-client-tag'));
+    assert.equal(node.metafield.value, oldDraft);
+    assert.equal(JSON.parse(node.refund.value).state, 'complete');
+  }
+  const writes = state.calls.filter((call) => call.query.includes('mutation')).length;
+  await apply(state.admin, refundPayload, shop);
+  assert.equal(state.calls.filter((call) => call.query.includes('mutation')).length, writes);
+  assert.ok(state.calls.every((call) => !/draftOrderCreate|draftOrderDelete|orderUpdate/.test(call.query)));
+  return 'PASS: full refund resets only invoice-blocking tags; repeat webhook makes no writes';
+});
+
+await check('Refunded shipping is charged once at the current combined tier in the next manual cycle', async () => {
+  const nodes = [fixture(1, 2), fixture(2, 4, { productTags: ['group'], tags: readyTags })];
+  const state = paymentAdmin(nodes);
+  await paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingInvoiceRefund(state.admin, refundPayload, shop);
+  const { admin, calls } = cycleAdmin(nodes, { createdDraftId: newDraft, drafts: { [oldDraft]: { id: oldDraft, status: 'COMPLETED', order: { displayFinancialStatus: 'REFUNDED' } } } });
+  const events = [];
+  const w = world({ 'app/lib/klaviyo.server.ts': { sendThursdayInvoiceEmail: async (event) => { events.push(event); return { ok: true }; } } });
+  const run = w.load('app/lib/thursday-cycle.server.ts').runThursdayCycle;
+  const preview = await run(admin, { shop, dryRun: true });
+  assert.equal(preview.results[0].itemCount, 6);
+  assert.equal(preview.results[0].shippingAmount, '23.26 CAD');
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  assert.equal(events.length, 0);
+  const live = await run(admin, { shop, dryRun: false });
+  assert.equal(live.results[0].draftOrderId, newDraft);
+  assert.equal(live.results[0].shippingAmount, '23.26 CAD');
+  assert.equal(events.length, 1);
+  assert.equal(calls.filter((call) => call.query.includes('CreateThursdayDraft')).length, 1);
+  assert.ok(nodes.every((node) => node.metafield.value === newDraft));
+  const repeated = await run(admin, { shop, dryRun: false });
+  assert.equal(repeated.customersProcessed, 0);
+  assert.equal(events.length, 1);
+  return 'PASS: preview 6 items / CAD 23.26; next manual run creates a fresh invoice once, not old amount plus new rate';
+});
+
+await check('Partial, pending and failed shipping refunds cannot reopen paid shipments', async () => {
+  for (const status of ['PARTIALLY_REFUNDED', 'PAID', 'PENDING', 'AUTHORIZED', 'VOIDED']) {
+    const state = paymentAdmin();
+    state.invoice.displayFinancialStatus = status;
+    await paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingInvoiceRefund(state.admin, refundPayload, shop);
+    assert.ok(state.originals.get(orderId).tags.includes('shipping-paid'));
+    assert.ok(state.calls.every((call) => !call.query.includes('mutation')), status);
+  }
+  return 'PASS: only the live fully-refunded state can reopen shipping';
+});
+
+await check('Product-order refunds cannot masquerade as shipping invoice refunds', async () => {
+  const state = paymentAdmin();
+  state.invoice.tags = ['ordinary-product-order'];
+  await paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingInvoiceRefund(state.admin, refundPayload, shop);
+  assert.ok(state.calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: shipping invoice identity required in addition to linked IDs';
+});
+
+await check('Old refund leaves newer invoices unchanged, even after an interrupted retry', async () => {
+  for (const pending of [false, true]) {
+    const state = paymentAdmin();
+    const node = state.originals.get(orderId);
+    node.metafield = { value: newDraft };
+    if (pending) node.refund = { value: JSON.stringify({ invoiceId, draftId: oldDraft, state: 'pending' }) };
+    await paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingInvoiceRefund(state.admin, refundPayload, shop);
+    assert.ok(state.calls.every((call) => !call.query.includes('mutation')));
+    assert.ok(node.tags.includes('shipping-paid') && node.tags.includes('thursday-email-sent'));
+  }
+  return 'PASS: the original must still be linked to the exact refunded invoice';
+});
+
+await check('Shipping refund does not resurrect cancelled/refunded/fulfilled or India-direct originals', async () => {
+  const nodes = [fixture(1, 1, { cancelledAt: '2026-09-15T00:00:00Z' }), fixture(2, 1, { financial: 'REFUNDED' }), fixture(3, 1, { financial: 'PARTIALLY_REFUNDED' }), fixture(4, 1, { fulfillment: 'FULFILLED' }), fixture(5, 1, { tags: ['india-direct'] })];
+  const state = paymentAdmin(nodes);
+  await paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingInvoiceRefund(state.admin, refundPayload, shop);
+  assert.ok(state.calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: ineligible originals remain excluded after an invoice refund';
+});
+
+await check('Every refund write failure is retryable without losing linkage', async () => {
+  for (const failure of ['ShippingRefundReceipt:pending', 'ShippingRefundTagsRemove', 'ShippingRefundReceipt:complete']) {
+    const state = paymentAdmin();
+    const apply = paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingInvoiceRefund;
+    state.failures.add(failure);
+    await assert.rejects(() => apply(state.admin, refundPayload, shop), /rejected/i);
+    assert.equal(state.originals.get(orderId).metafield.value, oldDraft);
+    state.failures.clear();
+    await apply(state.admin, refundPayload, shop);
+    assert.equal(JSON.parse(state.originals.get(orderId).refund.value).state, 'complete');
+    assert.ok(!state.originals.get(orderId).tags.includes('shipping-paid'));
+  }
+  return 'PASS: pending receipt, tag removal and completion failures all recover on retry';
+});
+
+await check('Paid tagging still works and a delayed paid webhook cannot undo a refund', async () => {
+  const state = paymentAdmin();
+  const node = state.originals.get(orderId);
+  node.tags = ['thursday-email-sent', 'client-tag'];
+  state.invoice.displayFinancialStatus = 'PAID';
+  const handlers = paymentWorld().load('app/lib/orders-updated-webhook.server.ts');
+  await handlers.processShippingPaidTagging(state.admin, { id: '999', financial_status: 'paid' }, shop);
+  assert.ok(node.tags.includes('shipping-paid') && node.tags.includes('client-tag'));
+  state.invoice.displayFinancialStatus = 'REFUNDED';
+  await handlers.processShippingInvoiceRefund(state.admin, refundPayload, shop);
+  await handlers.processShippingPaidTagging(state.admin, { id: '999', financial_status: 'paid' }, shop);
+  assert.ok(!node.tags.includes('shipping-paid'));
+  return 'PASS: normal payment tags originals, delayed paid delivery respects the live refund';
+});
+
+await check('Missing or conflicting shipping references fail safely', async () => {
+  for (const scenario of ['missingOrder', 'missingDraft', 'noReference', 'conflict', 'incompleteDraft']) {
+    const state = paymentAdmin();
+    if (scenario === 'missingOrder') state.originals.delete(orderId);
+    if (scenario === 'missingDraft') state.drafts.delete(oldDraft);
+    if (scenario === 'noReference') state.originals.get(orderId).metafield = null;
+    if (scenario === 'conflict') state.originals.get(orderId).legacyDraft = { value: newDraft };
+    if (scenario === 'incompleteDraft') state.drafts.set(oldDraft, null);
+    await assert.rejects(() => paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingInvoiceRefund(state.admin, refundPayload, shop), /Cannot/);
+    assert.ok(state.calls.every((call) => !call.query.includes('mutation')));
+  }
+  return 'PASS: unverified linkage never resets orders';
+});
+
+await check('Webhook routes request retries for payment/refund failures', async () => {
+  for (const route of ['updated', 'created']) {
+    let paidCalls = 0;
+    let refundCalls = 0;
+    const w = world({
+      'app/shopify.server.ts': { authenticate: { webhook: async () => ({ topic: `ORDERS_${route}`, shop, admin: {}, payload: refundPayload }) } },
+      'app/lib/orders-updated-webhook.server.ts': {
+        processStatusEmailTags: async () => { throw new Error('isolated status-email failure'); },
+        processShippingPaidTagging: async () => { paidCalls++; if (route === 'created') throw new Error('payment failed'); },
+        processShippingInvoiceRefund: async () => { refundCalls++; throw new Error('refund failed'); },
+        processPushedToNextWeekendVoid: async () => {},
+      },
+    });
+    const response = await w.load(`app/routes/webhooks.orders.${route}.tsx`).action({ request: new Request('https://review.invalid/webhook', { method: 'POST' }) });
+    assert.equal(response.status, 503);
+    assert.equal(paidCalls, 1);
+    assert.equal(refundCalls, route === 'updated' ? 1 : 0);
+  }
+  return 'PASS: payment/refund failures produce retryable responses even when status emails fail separately';
+});
+
+await check('Existing unpaid invoice is reused only when its eligible orders and payable amount still match', async () => {
+  for (const mismatch of ['none', 'orders', 'amount', 'currency']) {
+    const nodes = [fixture(1, 2)];
+    nodes[0].metafield = { value: oldDraft };
+    const draft = {
+      id: oldDraft, name: '#D100', invoiceUrl: 'https://review.invalid/existing', status: 'OPEN', order: null,
+      customAttributes: [{ key: 'source_order_ids', value: mismatch === 'orders' ? `${orderId},gid://shopify/Order/2` : orderId }],
+      totalPriceSet: { presentmentMoney: { amount: mismatch === 'amount' ? '23.26' : '19.52', currencyCode: mismatch === 'currency' ? 'USD' : 'CAD' } },
+    };
+    const { admin, calls } = cycleAdmin(nodes, { drafts: { [oldDraft]: draft } });
+    let sent = 0;
+    const w = world({ 'app/lib/klaviyo.server.ts': { sendThursdayInvoiceEmail: async () => { sent++; return { ok: true }; } } });
+    const result = await w.load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: false });
+    assert.equal(sent, mismatch === 'none' ? 1 : 0);
+    if (mismatch !== 'none') assert.match(result.results[0].error, /no longer matches/);
+    assert.ok(calls.every((call) => !call.query.includes('CreateThursdayDraft')));
+  }
+  return 'PASS: valid retry reuses the invoice; changed order group, rate or currency blocks a stale payment link';
+});
+
+await check('Completed paid or partially refunded invoices cannot be reused or fully recharged', async () => {
+  for (const financial of ['PAID', 'PARTIALLY_REFUNDED']) {
+    const node = fixture(1);
+    node.metafield = { value: oldDraft };
+    const { admin, calls } = cycleAdmin([node], { drafts: { [oldDraft]: { id: oldDraft, status: 'COMPLETED', order: { displayFinancialStatus: financial } } } });
+    const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: false });
+    assert.match(result.results[0].error, /not fully refunded/);
+    assert.ok(calls.every((call) => !call.query.includes('CreateThursdayDraft')));
+  }
+  return 'PASS: a completed non-refunded draft cannot become a duplicate invoice';
+});
+
+await check('Several previously refunded invoices can consolidate into one next-cycle invoice', async () => {
+  const nodes = [fixture(1, 2), fixture(2, 4)];
+  nodes[0].metafield = { value: oldDraft };
+  nodes[1].metafield = { value: newDraft };
+  const thirdDraft = 'gid://shopify/DraftOrder/300';
+  const drafts = Object.fromEntries([oldDraft, newDraft].map((id) => [id, { id, status: 'COMPLETED', order: { displayFinancialStatus: 'REFUNDED' } }]));
+  const { admin, calls } = cycleAdmin(nodes, { drafts, createdDraftId: thirdDraft });
+  const w = world({ 'app/lib/klaviyo.server.ts': { sendThursdayInvoiceEmail: async () => ({ ok: true }) } });
+  const result = await w.load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: false });
+  assert.equal(result.results[0].draftOrderId, thirdDraft);
+  assert.equal(result.results[0].shippingAmount, '23.26 CAD');
+  assert.equal(calls.filter((call) => call.query.includes('CreateThursdayDraft')).length, 1);
+  return 'PASS: refunded historical draft IDs do not block customer consolidation';
+});
+
+await check('Shipping invoice source attributes accept legacy IDs and remove duplicates', async () => {
+  const state = paymentAdmin();
+  state.invoice.customAttributes = [{ key: 'source_order_ids', value: '1' }, { key: 'linked_order_ids', value: JSON.stringify([orderId, 1]) }];
+  await paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingInvoiceRefund(state.admin, refundPayload, shop);
+  assert.equal(state.calls.filter((call) => call.query.includes('query ShippingPaymentOriginal')).length, 1);
+  assert.equal(JSON.parse(state.originals.get(orderId).refund.value).state, 'complete');
+  return 'PASS: numeric and GID attributes resolve to one original order';
+});
+
+await check('Late payment for an older invoice cannot mark a newer shipment paid', async () => {
+  const state = paymentAdmin();
+  const node = state.originals.get(orderId);
+  node.metafield = { value: newDraft };
+  node.tags = ['thursday-email-sent'];
+  state.invoice.displayFinancialStatus = 'PAID';
+  await paymentWorld().load('app/lib/orders-updated-webhook.server.ts').processShippingPaidTagging(state.admin, { id: '999', financial_status: 'paid' }, shop);
+  assert.ok(!node.tags.includes('shipping-paid'));
+  assert.ok(state.calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: paid state is scoped to the same linked shipping invoice';
 });
 
 for (const result of results) console.log(JSON.stringify(result));

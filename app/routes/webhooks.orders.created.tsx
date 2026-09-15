@@ -14,7 +14,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     console.error(
       `[orders/create] No admin API client for ${shop} (offline session missing?)`,
     );
-    return new Response();
+    return new Response("Admin API unavailable", { status: 503 });
   }
 
   const orderPayload = payload as {
@@ -29,9 +29,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     await processStatusEmailTags(admin, orderPayload, shop);
-    await processShippingPaidTagging(admin, orderPayload, shop);
   } catch (error) {
     console.error(`[orders/create] handler error:`, error);
+  }
+
+  try {
+    await processShippingPaidTagging(admin, orderPayload, shop);
+  } catch (error) {
+    console.error(`[orders/create] shipping payment reconciliation failed:`, error);
+    return new Response("Shipping payment reconciliation failed", { status: 503 });
   }
 
   return new Response();
