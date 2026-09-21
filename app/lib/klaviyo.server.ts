@@ -143,6 +143,7 @@ export async function sendThursdayInvoiceEmail(options: {
   email: string;
   customerName: string;
   invoiceUrl: string;
+  payUrl: string;
   waitUrl: string;
   orderNames: string[];
   itemCount: number;
@@ -162,6 +163,9 @@ export async function sendThursdayInvoiceEmail(options: {
   if (!options.invoiceUrl) {
     return { ok: false, error: "Draft order has no invoiceUrl" };
   }
+  if (!options.payUrl) {
+    return { ok: false, error: "Thursday pay link is not configured. Check the app URL and signing secret." };
+  }
   if (!options.waitUrl) {
     return { ok: false, error: "Thursday wait link is not configured. Check the app URL and signing secret." };
   }
@@ -175,8 +179,11 @@ export async function sendThursdayInvoiceEmail(options: {
       template_id: templateId,
       customer_name: options.customerName,
       item_count: String(options.itemCount),
-      invoice_url: options.invoiceUrl,
-      pay_shipping_url: options.invoiceUrl,
+      // Routed through our own /shipping/pay so a stale/deleted draft
+      // (e.g. after Friday reset) shows a clear message instead of a dead
+      // Shopify checkout link.
+      invoice_url: options.payUrl,
+      pay_shipping_url: options.payUrl,
       wait_url: options.waitUrl,
       order_names: options.orderNames.join(", "),
       order_details: options.orderDetails || "",

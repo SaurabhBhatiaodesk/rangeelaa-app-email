@@ -344,10 +344,15 @@ await check('Invalid, tampered and expired links are rejected', async () => {
   return 'PASS: invalid signatures and altered payloads rejected';
 });
 
-await check('Missing Wait URL prevents invoice event', async () => {
-  const result = await world().load('app/lib/klaviyo.server.ts').sendThursdayInvoiceEmail({ apiKey: 'local-only', email: 'test@example.invalid', customerName: 'Test', invoiceUrl: 'https://review.invalid/invoice', waitUrl: '', orderNames: ['#1'], itemCount: 1, shippingAmount: '17.39 CAD', templateId: 'local-only' });
-  assert.equal(result.ok, false);
-  assert.match(result.error, /wait link/i);
+await check('Missing Wait or Pay URL prevents invoice event', async () => {
+  const klaviyo = world().load('app/lib/klaviyo.server.ts');
+  const base = { apiKey: 'local-only', email: 'test@example.invalid', customerName: 'Test', invoiceUrl: 'https://review.invalid/invoice', payUrl: 'https://review.invalid/shipping/pay', orderNames: ['#1'], itemCount: 1, shippingAmount: '17.39 CAD', templateId: 'local-only' };
+  const noWait = await klaviyo.sendThursdayInvoiceEmail({ ...base, waitUrl: '' });
+  assert.equal(noWait.ok, false);
+  assert.match(noWait.error, /wait link/i);
+  const noPay = await klaviyo.sendThursdayInvoiceEmail({ ...base, payUrl: '', waitUrl: 'https://review.invalid/shipping/wait' });
+  assert.equal(noPay.ok, false);
+  assert.match(noPay.error, /pay link/i);
   return 'PASS: incomplete button data never reaches the network';
 });
 
@@ -723,6 +728,38 @@ await check('Late payment for an older invoice cannot mark a newer shipment paid
   assert.ok(!node.tags.includes('shipping-paid'));
   assert.ok(state.calls.every((call) => !call.query.includes('mutation')));
   return 'PASS: paid state is scoped to the same linked shipping invoice';
+});
+
+await check('Pay link redirects to a live invoice and fails gracefully once the draft is gone', async () => {
+  let draft = { id: oldDraft, status: 'OPEN', invoiceUrl: 'https://review.invalid/checkout/1', order: null };
+  const admin = { graphql: async (query) => {
+    assert.ok(query.includes('ThursdayPayDraft'), `Unexpected pay operation: ${query}`);
+    return { json: async () => ({ data: { draftOrder: draft } }) };
+  } };
+  const w = world({ 'app/shopify.server.ts': { unauthenticated: { admin: async () => ({ admin }) } } });
+  const link = w.load('app/lib/thursday-wait-link.server.ts').buildThursdayPayUrl({ shop, draftId: oldDraft, orderIds: [orderId] });
+  const loader = w.load('app/routes/shipping.pay.tsx').loader;
+
+  const ok = await loader({ request: new Request(link) });
+  assert.equal(ok.status, 302);
+  assert.equal(ok.headers.get('location'), draft.invoiceUrl);
+
+  // Friday reset (or anything else) deleted the draft after the email went out.
+  draft = null;
+  const deleted = await loader({ request: new Request(link) });
+  assert.equal(deleted.status, 409);
+
+  // Draft completed (paid) via another channel.
+  draft = { id: oldDraft, status: 'COMPLETED', invoiceUrl: 'https://review.invalid/checkout/1', order: { id: 'gid://shopify/Order/999' } };
+  const completed = await loader({ request: new Request(link) });
+  assert.equal(completed.status, 409);
+
+  // A wait-purpose link must not work as a pay link, and vice versa.
+  const waitLink = w.load('app/lib/thursday-wait-link.server.ts').buildThursdayWaitUrl({ shop, draftId: oldDraft, orderIds: [orderId] });
+  const crossUse = await loader({ request: new Request(waitLink) });
+  assert.equal(crossUse.status, 400);
+
+  return 'PASS: pay link resolves live draft state and rejects a wait link';
 });
 
 for (const result of results) console.log(JSON.stringify(result));

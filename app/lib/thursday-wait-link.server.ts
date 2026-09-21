@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const DEFAULT_WAIT_PATH = "/shipping/wait";
+const DEFAULT_PAY_PATH = "/shipping/pay";
 
 function signingSecret(): string {
   return (
@@ -20,17 +21,29 @@ function waitBaseUrl(): string {
 }
 
 function canonicalPayload(input: {
+  purpose: "wait" | "pay";
   shop: string;
   draftId: string;
   orderIds: string[];
   exp: string;
 }) {
   return [
+    input.purpose,
     input.shop,
     input.draftId,
     [...input.orderIds].sort().join(","),
     input.exp,
   ].join("|");
+}
+
+/** Pre-existing wait links were signed without a purpose segment; keep verifying those so links already emailed to real customers do not break. */
+function legacyWaitPayload(input: {
+  shop: string;
+  draftId: string;
+  orderIds: string[];
+  exp: string;
+}) {
+  return [input.shop, input.draftId, [...input.orderIds].sort().join(","), input.exp].join("|");
 }
 
 function sign(payload: string): string {
@@ -44,20 +57,20 @@ function safeEqualHex(a: string, b: string): boolean {
   return timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
 }
 
-export function buildThursdayWaitUrl(input: {
-  shop: string;
-  draftId: string;
-  orderIds: string[];
-}) {
+function buildSignedUrl(
+  purpose: "wait" | "pay",
+  path: string,
+  input: { shop: string; draftId: string; orderIds: string[] },
+) {
   const base = waitBaseUrl();
   if (!base || !input.draftId || input.orderIds.length === 0) return "";
 
   const exp = String(Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 21);
-  const payload = canonicalPayload({ ...input, exp });
+  const payload = canonicalPayload({ purpose, ...input, exp });
   const sig = sign(payload);
   if (!sig) return "";
 
-  const url = new URL(DEFAULT_WAIT_PATH, base);
+  const url = new URL(path, base);
   url.searchParams.set("shop", input.shop);
   url.searchParams.set("draft", input.draftId);
   url.searchParams.set("orders", input.orderIds.join(","));
@@ -66,8 +79,26 @@ export function buildThursdayWaitUrl(input: {
   return url.toString();
 }
 
-export function verifyThursdayWaitUrl(url: URL):
-  | { ok: true; shop: string; draftId: string; orderIds: string[] }
+export function buildThursdayWaitUrl(input: {
+  shop: string;
+  draftId: string;
+  orderIds: string[];
+}) {
+  return buildSignedUrl("wait", DEFAULT_WAIT_PATH, input);
+}
+
+export function buildThursdayPayUrl(input: {
+  shop: string;
+  draftId: string;
+  orderIds: string[];
+}) {
+  return buildSignedUrl("pay", DEFAULT_PAY_PATH, input);
+}
+
+function verifySignedUrl(
+  purpose: "wait" | "pay",
+  url: URL,
+): { ok: true; shop: string; draftId: string; orderIds: string[] }
   | { ok: false; error: string } {
   const shop = url.searchParams.get("shop") || "";
   const draftId = url.searchParams.get("draft") || "";
@@ -79,18 +110,31 @@ export function verifyThursdayWaitUrl(url: URL):
   const sig = url.searchParams.get("sig") || "";
 
   if (!shop || !draftId || orderIds.length === 0 || !exp || !sig) {
-    return { ok: false, error: "This wait link is missing required details." };
+    return { ok: false, error: "This link is missing required details." };
   }
 
   const expiresAt = Number(exp);
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
-    return { ok: false, error: "This wait link has expired." };
+    return { ok: false, error: "This link has expired." };
   }
 
-  const expected = sign(canonicalPayload({ shop, draftId, orderIds, exp }));
-  if (!expected || !safeEqualHex(sig, expected)) {
-    return { ok: false, error: "This wait link is not valid." };
+  const expected = sign(canonicalPayload({ purpose, shop, draftId, orderIds, exp }));
+  const legacyExpected =
+    purpose === "wait" ? sign(legacyWaitPayload({ shop, draftId, orderIds, exp })) : "";
+  const valid =
+    (expected && safeEqualHex(sig, expected)) ||
+    (legacyExpected && safeEqualHex(sig, legacyExpected));
+  if (!valid) {
+    return { ok: false, error: "This link is not valid." };
   }
 
   return { ok: true, shop, draftId, orderIds };
+}
+
+export function verifyThursdayWaitUrl(url: URL) {
+  return verifySignedUrl("wait", url);
+}
+
+export function verifyThursdayPayUrl(url: URL) {
+  return verifySignedUrl("pay", url);
 }
