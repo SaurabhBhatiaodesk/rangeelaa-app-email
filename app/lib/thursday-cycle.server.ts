@@ -21,6 +21,7 @@ import {
   classifyOrder,
   countPreorderProductShippingItems,
   countRtwShippingItems,
+  preorderProductTags,
 } from "./product-eligibility.server";
 
 const META_NAMESPACE = "rangeela";
@@ -284,6 +285,39 @@ function billableItemCount(
     return countPreorderProductShippingItems(order, workflowTags);
   }
   return countRtwShippingItems(order);
+}
+
+/** Titles of the line items actually being billed on this order, for customer-facing summaries. */
+function billableLineItemTitles(
+  order: CycleOrder,
+  workflowTags: PreorderWorkflowTags,
+): string[] {
+  const classification = classifyOrder(order, workflowTags);
+  if (classification === "india_direct") return [];
+  const isPreorder = classification === "preorder";
+  const tags = isPreorder ? preorderProductTags(workflowTags) : [];
+  return order.lineItems
+    .filter((item) => {
+      if (item.requiresShipping === false) return false;
+      if (!isPreorder) return true;
+      return tags.some((tag) => hasTag(item.productTags, tag));
+    })
+    .filter((item) => Number(item.quantity || 0) > 0)
+    .map((item) => `${item.title} x${item.quantity}`);
+}
+
+/** e.g. "#1234: Blue Saree x1, Red Kurti x2 | #1235: Dupatta x1" for the invoice email. */
+function buildOrderDetailsSummary(
+  orders: CycleOrder[],
+  workflowTags: PreorderWorkflowTags,
+): string {
+  return orders
+    .map((order) => {
+      const titles = billableLineItemTitles(order, workflowTags);
+      return titles.length ? `${order.name}: ${titles.join(", ")}` : null;
+    })
+    .filter(Boolean)
+    .join(" | ");
 }
 
 export type ThursdayCustomerResult = {
@@ -804,6 +838,7 @@ export async function runThursdayCycle(
         waitUrl,
         orderNames,
         itemCount,
+        orderDetails: buildOrderDetailsSummary(orders, workflowTags),
         shippingAmount: row.shippingAmount,
         uniqueId: `thursday:${draft.id}`,
         templateId: thursdayTemplateId,

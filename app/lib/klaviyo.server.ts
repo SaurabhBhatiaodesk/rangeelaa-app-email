@@ -146,6 +146,7 @@ export async function sendThursdayInvoiceEmail(options: {
   waitUrl: string;
   orderNames: string[];
   itemCount: number;
+  orderDetails?: string;
   shippingAmount: string;
   uniqueId?: string;
   templateId: string;
@@ -178,6 +179,7 @@ export async function sendThursdayInvoiceEmail(options: {
       pay_shipping_url: options.invoiceUrl,
       wait_url: options.waitUrl,
       order_names: options.orderNames.join(", "),
+      order_details: options.orderDetails || "",
       shipping_amount: options.shippingAmount,
     },
   });

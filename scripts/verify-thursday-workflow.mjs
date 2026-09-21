@@ -227,22 +227,30 @@ await check('Shipping rate tier boundaries', async () => {
   return 'PASS: all 24 client rate boundary checks';
 });
 
-await check('Cron cannot send with default guard or legacy automation flag', async () => {
-  for (const env of [{}, { THURSDAY_AUTOMATION_ENABLED: 'true' }]) {
+await check('Cron can never send a live Thursday invoice, under any env var or param', async () => {
+  // The client requires that no Thursday email is ever sent without someone
+  // clicking "Run Thursday Cycle" in the app. This endpoint must stay
+  // permanently incapable of a live send, no matter what gets set on Heroku.
+  for (const env of [
+    {},
+    { THURSDAY_AUTOMATION_ENABLED: 'true' },
+    { THURSDAY_CRON_LIVE_ENABLED: 'true' },
+  ]) {
     let runs = 0;
+    let liveRuns = 0;
     const w = world({
       'app/lib/cron-auth.server.ts': { authenticateCron: async () => ({ ok: true, shop, admin: {} }) },
       'app/lib/cron-schedule.server.ts': { getCronTimeZone: () => 'America/Chicago', isWeekdayInCronTimeZone: () => true },
-      'app/lib/thursday-cycle.server.ts': { runThursdayCycle: async () => { runs += 1; return { ok: true }; } },
+      'app/lib/thursday-cycle.server.ts': { runThursdayCycle: async (_admin, opts) => { runs += 1; if (!opts.dryRun) liveRuns += 1; return { ok: true }; } },
     }, env);
     const route = w.load('app/routes/api.cron.thursday.tsx');
     for (const method of ['GET', 'POST']) {
       const response = await route[method === 'GET' ? 'loader' : 'action']({ request: new Request('https://review.invalid/api/cron/thursday?force=1', { method }) });
-      assert.equal((await response.json()).skipped, true);
+      assert.equal((await response.json()).skipped, true, `${method} with ${JSON.stringify(env)}`);
     }
-    assert.equal(runs, 0);
+    assert.equal(liveRuns, 0, `env=${JSON.stringify(env)}`);
   }
-  return 'PASS: GET/POST force=1 and old automation env cannot invoke a live cycle';
+  return 'PASS: no env var or query param can make this endpoint send a live Thursday invoice';
 });
 
 await check('Confirmed wait deletes one shared draft; repeat click is harmless', async () => {

@@ -1,9 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { authenticateCron } from "../lib/cron-auth.server";
-import {
-  getCronTimeZone,
-  isWeekdayInCronTimeZone,
-} from "../lib/cron-schedule.server";
+import { getCronTimeZone } from "../lib/cron-schedule.server";
 import { runThursdayCycle } from "../lib/thursday-cycle.server";
 
 async function handle(request: Request) {
@@ -16,34 +13,27 @@ async function handle(request: Request) {
   const dryRun =
     url.searchParams.get("dryRun") === "1" ||
     url.searchParams.get("dry_run") === "1";
-  const force = url.searchParams.get("force") === "1";
 
   const timeZone = getCronTimeZone();
-  const cronLiveEnabled = process.env.THURSDAY_CRON_LIVE_ENABLED === "true";
 
-  if (!dryRun && !cronLiveEnabled) {
+  // The client requires that a Thursday invoice is only ever sent by someone
+  // explicitly clicking "Run Thursday Cycle" in the app. This endpoint is
+  // reachable by any cron/scheduler configured against it, so it must never
+  // be able to send live emails on its own, regardless of env vars or query
+  // params — there is intentionally no live-mode escape hatch here anymore.
+  if (!dryRun) {
     return Response.json({
       ok: true,
       dryRun,
       skipped: true,
       timeZone,
       message:
-        "Thursday live cron skipped: live Thursday cycle is manual-only",
-    });
-  }
-
-  if (!force && !isWeekdayInCronTimeZone("Thu")) {
-    return Response.json({
-      ok: true,
-      dryRun,
-      skipped: true,
-      timeZone,
-      message: `Thursday cycle skipped: today is not Thursday in ${timeZone}`,
+        "Thursday live cron is permanently disabled: the Thursday cycle can only be run manually from the app.",
     });
   }
 
   const result = await runThursdayCycle(auth.admin, {
-    dryRun,
+    dryRun: true,
     shop: auth.shop,
   });
   return Response.json(result, { status: result.ok ? 200 : 207 });
