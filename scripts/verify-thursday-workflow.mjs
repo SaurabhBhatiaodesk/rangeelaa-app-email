@@ -777,7 +777,7 @@ await check('Pay link redirects to a live invoice and fails gracefully once the 
   draft = { id: oldDraft, status: 'COMPLETED', invoiceUrl: 'https://review.invalid/checkout/1', order: { id: 'gid://shopify/Order/999' } };
   const completed = await loader({ request: new Request(link) });
   assert.equal(completed.status, 200);
-  assert.ok((await completed.text()).includes('Shipping already paid'));
+  assert.ok((await completed.text()).includes('Shipping Already Paid'));
 
   // A wait-purpose link must not work as a pay link, and vice versa.
   const waitLink = w.load('app/lib/thursday-wait-link.server.ts').buildThursdayWaitUrl({ shop, draftId: oldDraft, orderIds: [orderId] });

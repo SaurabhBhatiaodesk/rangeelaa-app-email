@@ -9,7 +9,19 @@ function escapeHtml(value: string) {
   })[character]!);
 }
 
-function page(title: string, body: string, status = 200) {
+function page(
+  title: string,
+  body: string,
+  status = 200,
+  extras?: { icon?: "success"; button?: { label: string; href: string } },
+) {
+  const iconHtml =
+    extras?.icon === "success"
+      ? `<div class="icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`
+      : "";
+  const buttonHtml = extras?.button
+    ? `<a class="button" href="${escapeHtml(extras.button.href)}">${escapeHtml(extras.button.label)}</a>`
+    : "";
   return new Response(
     `<!doctype html>
 <html lang="en">
@@ -33,18 +45,40 @@ function page(title: string, body: string, status = 200) {
         background: #fff;
         border: 1px solid #eadfd5;
         border-radius: 8px;
-        padding: 32px;
+        padding: 40px 32px;
         text-align: center;
         box-shadow: 0 12px 34px rgba(40, 28, 20, 0.08);
       }
-      h1 { margin: 0 0 12px; font-size: 26px; }
-      p { margin: 0; line-height: 1.55; font-size: 16px; }
+      .icon {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 20px;
+        border-radius: 50%;
+        background: #2e9e5b;
+        display: grid;
+        place-items: center;
+      }
+      h1 { margin: 0 0 12px; font-size: 28px; }
+      p { margin: 0 0 24px; line-height: 1.55; font-size: 16px; color: #4a4550; }
+      p:last-child { margin-bottom: 0; }
+      .button {
+        display: inline-block;
+        background: #6d2077;
+        color: #fff;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 16px;
+        padding: 14px 32px;
+        border-radius: 6px;
+      }
     </style>
   </head>
   <body>
     <main>
+      ${iconHtml}
       <h1>${escapeHtml(title)}</h1>
       <p>${escapeHtml(body)}</p>
+      ${buttonHtml}
     </main>
   </body>
 </html>`,
@@ -77,15 +111,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { admin } = await unauthenticated.admin(verified.shop);
     const json = await graphqlJson(admin, `#graphql
       query ThursdayPayDraft($id: ID!) {
-        draftOrder(id: $id) { id status invoiceUrl order { id } }
+        draftOrder(id: $id) { id status invoiceUrl order { id statusPageUrl } }
       }`, { id: verified.draftId });
     const draft = json.data?.draftOrder;
 
     if (draft?.order) {
       return page(
-        "Shipping already paid",
-        "Good news — this shipping invoice has already been paid. There is nothing more to do.",
+        "Shipping Already Paid",
+        "You have already paid the shipping amount for this order.",
         200,
+        {
+          icon: "success",
+          ...(draft.order.statusPageUrl
+            ? { button: { label: "View Order →", href: draft.order.statusPageUrl } }
+            : {}),
+        },
       );
     }
     if (!draft) {
