@@ -81,17 +81,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }`, { id: verified.draftId });
     const draft = json.data?.draftOrder;
 
+    if (draft?.order) {
+      return page(
+        "Shipping already paid",
+        "Good news — this shipping invoice has already been paid. There is nothing more to do.",
+        200,
+      );
+    }
     if (!draft) {
       return page(
         "Invoice no longer available",
-        "This shipping invoice is no longer available. Please use your latest shipping email or contact Rangeelaa support.",
+        "This shipping invoice is no longer available — you may have already chosen to wait, or it was paid earlier. Please check your most recent shipping email, or contact Rangeelaa support if you still need help.",
         409,
       );
     }
-    if (draft.order || !["OPEN", "INVOICE_SENT"].includes(draft.status)) {
+    if (!["OPEN", "INVOICE_SENT"].includes(draft.status)) {
       return page(
         "Invoice no longer available",
-        "This shipping invoice has already been paid or is no longer open. Please contact Rangeelaa support if you still need to pay.",
+        "This shipping invoice is no longer open. Please contact Rangeelaa support if you still need to pay.",
         409,
       );
     }

@@ -773,10 +773,11 @@ await check('Pay link redirects to a live invoice and fails gracefully once the 
   const deleted = await loader({ request: new Request(link) });
   assert.equal(deleted.status, 409);
 
-  // Draft completed (paid) via another channel.
+  // Draft completed (paid) via another channel: friendly "already paid" page, not a generic error.
   draft = { id: oldDraft, status: 'COMPLETED', invoiceUrl: 'https://review.invalid/checkout/1', order: { id: 'gid://shopify/Order/999' } };
   const completed = await loader({ request: new Request(link) });
-  assert.equal(completed.status, 409);
+  assert.equal(completed.status, 200);
+  assert.ok((await completed.text()).includes('Shipping already paid'));
 
   // A wait-purpose link must not work as a pay link, and vice versa.
   const waitLink = w.load('app/lib/thursday-wait-link.server.ts').buildThursdayWaitUrl({ shop, draftId: oldDraft, orderIds: [orderId] });
