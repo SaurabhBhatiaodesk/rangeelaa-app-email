@@ -491,6 +491,30 @@ await check('Cancelled and refunded originals never enter either Thursday pool',
   return 'PASS: both pools exclude cancelled/refunded/partially-refunded/voided orders, even with a hold override';
 });
 
+await check('An already-paid order can never be re-invoiced by adding hold-for-next-cycle', async () => {
+  const paidWithHold = fixture(1, 3, {
+    productTags: ['group'],
+    tags: [...readyTags, 'shipping-paid', 'thursday-email-sent', 'hold-for-next-cycle'],
+  });
+  const { admin, calls } = cycleAdmin([paidWithHold]);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 0);
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: shipping-paid always blocks re-invoicing, even when hold-for-next-cycle is also present';
+});
+
+await check('hold-for-next-cycle still re-opens an unpaid, already-invoiced order', async () => {
+  const invoicedNotPaid = fixture(1, 3, {
+    productTags: ['group'],
+    tags: [...readyTags, 'thursday-email-sent', 'hold-for-next-cycle'],
+  });
+  const { admin } = cycleAdmin([invoicedNotPaid]);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].orderNames.join(','), '#1');
+  return 'PASS: hold-for-next-cycle still overrides thursday-email-sent when the order was never paid';
+});
+
 await check('Removed units do not affect Thursday counts or classification', async () => {
   const node = fixture(1, 10, { currentQuantity: 2 });
   node.lineItems.edges.push({ node: { quantity: 20, currentQuantity: 0, requiresShipping: true, product: { tags: ['india'] } } });

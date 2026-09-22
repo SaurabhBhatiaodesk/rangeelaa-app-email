@@ -137,7 +137,13 @@ export type CycleGateTags = {
   shippingPaidTag: string;
 };
 
-/** Eligible unless already tagged — hold-for-next-cycle overrides shipping-paid / thursday-email-sent. */
+/**
+ * Eligible unless already tagged. shipping-paid always blocks re-invoicing —
+ * the only legitimate way to re-open a paid order is a real refund, which
+ * clears shipping-paid itself. hold-for-next-cycle only overrides
+ * thursday-email-sent, so staff can explicitly push an *unpaid* invoiced
+ * order into next week's cycle without it counting as a duplicate.
+ */
 export function passesCycleTagGate(
   tags: string[],
   gateTags: CycleGateTags = {
@@ -147,11 +153,12 @@ export function passesCycleTagGate(
   },
 ): boolean {
   const lower = tags.map((t) => t.toLowerCase());
+  if (lower.includes(gateTags.shippingPaidTag.toLowerCase())) return false;
+
   const hasHold = lower.includes(gateTags.holdForNextCycleTag.toLowerCase());
   if (hasHold) return true;
 
   if (lower.includes(gateTags.thursdayEmailSentTag.toLowerCase())) return false;
-  if (lower.includes(gateTags.shippingPaidTag.toLowerCase())) return false;
   return true;
 }
 
