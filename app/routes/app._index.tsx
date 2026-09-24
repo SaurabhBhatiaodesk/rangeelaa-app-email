@@ -1228,7 +1228,7 @@ export default function ShippingManagerIndex() {
                                   />
                                   <s-text>{row.customerName || row.email}</s-text>
                                 </s-stack>
-                                <s-badge tone="neutral">
+                                <s-badge tone="info">
                                   {row.orderNames.length}{" "}
                                   {row.orderNames.length === 1
                                     ? "order"
