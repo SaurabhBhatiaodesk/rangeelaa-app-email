@@ -1217,15 +1217,23 @@ export default function ShippingManagerIndex() {
                         {filteredResults.map((row) => (
                           <s-table-row key={row.email}>
                             <s-table-cell>
-                              <s-stack
-                                direction="inline"
-                                alignItems="center"
-                                gap="small-200"
-                              >
-                                <CustomerAvatar
-                                  name={row.customerName || row.email}
-                                />
-                                <s-text>{row.customerName || row.email}</s-text>
+                              <s-stack direction="block" gap="small-200">
+                                <s-stack
+                                  direction="inline"
+                                  alignItems="center"
+                                  gap="small-200"
+                                >
+                                  <CustomerAvatar
+                                    name={row.customerName || row.email}
+                                  />
+                                  <s-text>{row.customerName || row.email}</s-text>
+                                </s-stack>
+                                <s-badge tone="neutral">
+                                  {row.orderNames.length}{" "}
+                                  {row.orderNames.length === 1
+                                    ? "order"
+                                    : "orders"}
+                                </s-badge>
                               </s-stack>
                             </s-table-cell>
                             <s-table-cell>
