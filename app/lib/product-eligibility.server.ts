@@ -65,14 +65,22 @@ export function countConfiguredProductShippingItems(
   }, 0);
 }
 
+/**
+ * Dispatch-payment garments are real, already-made-up pieces from the old
+ * process and are billed like any other RTW item — a leftover "india" tag on
+ * that same product (e.g. a fabric-origin label) doesn't mean the order is an
+ * India Direct shipment, so it shouldn't trigger that exclusion.
+ */
 export function hasIndiaDirectSignal(
   order: ProductTaggedOrder,
   workflowTags: Pick<PreorderWorkflowTags, "indiaItemTag">,
 ): boolean {
   if (hasTag(order.tags ?? [], "india-direct")) return true;
   const indiaTag = workflowTags.indiaItemTag || "india";
-  return order.lineItems.some((lineItem) =>
-    hasTag(lineItem.productTags, indiaTag),
+  return order.lineItems.some(
+    (lineItem) =>
+      !hasTag(lineItem.productTags, "dispatch skirt") &&
+      hasTag(lineItem.productTags, indiaTag),
   );
 }
 
