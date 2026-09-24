@@ -913,8 +913,8 @@ export default function SettingsPage() {
             <s-stack direction="block" gap="base">
               <s-paragraph>
                 Preorder orders are identified when any line item has product
-                tag group, dispatch skirt, or this configured preorder product
-                tag. Default is Web Saree.
+                tag group, or this configured preorder product tag. Default
+                is Web Saree.
               </s-paragraph>
               <TagChipField
                 label="Preorder product tag"

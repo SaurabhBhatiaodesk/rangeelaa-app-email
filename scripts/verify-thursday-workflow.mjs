@@ -83,7 +83,8 @@ function fixture(id, quantity = 1, options = {}) {
   return {
     id: `gid://shopify/Order/${id}`, name: `#${id}`, email: 'local-test@example.invalid', createdAt: '2026-09-01T00:00:00Z',
     tags: options.tags ?? [], displayFinancialStatus: options.financial ?? 'PAID', displayFulfillmentStatus: options.fulfillment ?? 'UNFULFILLED', cancelledAt: options.cancelledAt ?? null,
-    currentShippingPriceSet: { shopMoney: { amount: options.shipping ?? '0' } }, customer: { id: 'gid://shopify/Customer/1', displayName: 'Review Customer' },
+    currentShippingPriceSet: { shopMoney: { amount: options.shipping ?? '0' } },
+    customer: { id: 'gid://shopify/Customer/1', displayName: 'Review Customer' },
     shippingAddress: { countryCodeV2: options.country ?? 'CA', city: options.city ?? 'Toronto', firstName: 'Review', lastName: 'Customer' }, metafield: null,
     lineItems: { edges: [{ node: { title: 'Review product', quantity, currentQuantity: options.currentQuantity ?? quantity, requiresShipping: true, product: { tags: productTags } } }] },
   };
@@ -478,7 +479,7 @@ function paymentWorld() {
 await check('Cancelled and refunded originals never enter either Thursday pool', async () => {
   const nodes = [fixture(1, 2), fixture(2, 4, { productTags: ['group'], tags: readyTags })];
   for (const productTags of [['dress'], ['group']]) {
-    for (const options of [{ cancelledAt: '2026-09-15T00:00:00Z' }, { financial: 'REFUNDED' }, { financial: 'PARTIALLY_REFUNDED' }, { financial: 'VOIDED' }]) {
+    for (const options of [{ cancelledAt: '2026-09-15T00:00:00Z' }, { financial: 'REFUNDED' }, { financial: 'PARTIALLY_REFUNDED', currentQuantity: 10 }, { financial: 'VOIDED' }]) {
       nodes.push(fixture(nodes.length + 1, 20, { ...options, productTags, tags: [...readyTags, 'hold-for-next-cycle'] }));
     }
   }
@@ -489,6 +490,54 @@ await check('Cancelled and refunded originals never enter either Thursday pool',
   assert.equal(result.results[0].shippingAmount, '23.26 CAD');
   assert.ok(calls.every((call) => !call.query.includes('mutation')));
   return 'PASS: both pools exclude cancelled/refunded/partially-refunded/voided orders, even with a hold override';
+});
+
+await check('A shipping-only refund (garment quantity unchanged) does not disqualify an RTW order', async () => {
+  const nodes = [fixture(1, 3, { financial: 'PARTIALLY_REFUNDED' })];
+  const { admin, calls } = cycleAdmin(nodes);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].itemCount, 3);
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: a courtesy/shipping refund that never reduced the garment quantity still counts as unpaid shipping';
+});
+
+await check('A shipping-only refund (garment quantity unchanged) does not disqualify a preorder order', async () => {
+  const nodes = [fixture(1, 2, { productTags: ['group'], tags: readyTags, financial: 'PARTIALLY_REFUNDED' })];
+  const { admin, calls } = cycleAdmin(nodes);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].itemCount, 2);
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: the same shipping-only refund exception applies to a preorder order';
+});
+
+await check('A refund that actually returns a garment still disqualifies the order', async () => {
+  const nodes = [fixture(1, 3, { financial: 'PARTIALLY_REFUNDED', currentQuantity: 2 })];
+  const { admin } = cycleAdmin(nodes);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 0);
+  return 'PASS: a refund that reduced the garment quantity is a real return, not billable';
+});
+
+await check('Dispatch skirt items are billed as ordinary RTW pieces, including mixed orders', async () => {
+  const node = fixture(1, 1, { productTags: ['dispatch skirt'] });
+  node.lineItems.edges.push({ node: { title: 'Plain top', quantity: 1, currentQuantity: 1, requiresShipping: true, product: { tags: ['top'] } } });
+  const { admin, calls } = cycleAdmin([node]);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].itemCount, 2);
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: a dispatch skirt no longer forces preorder classification; both pieces on the order are billed';
+});
+
+await check('A fulfilled preorder order is excluded from the invoice list', async () => {
+  const nodes = [fixture(1, 2, { productTags: ['group'], tags: readyTags, fulfillment: 'FULFILLED' })];
+  const { admin, calls } = cycleAdmin(nodes);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 0);
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: a fulfilled preorder order never re-enters the Thursday invoice list';
 });
 
 await check('An already-paid order can never be re-invoiced by adding hold-for-next-cycle', async () => {

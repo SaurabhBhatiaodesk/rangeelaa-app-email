@@ -25,6 +25,7 @@ function order(partial: Partial<CycleOrder> & { tags: string[] }): CycleOrder {
     displayFinancialStatus: partial.displayFinancialStatus ?? "PAID",
     displayFulfillmentStatus: partial.displayFulfillmentStatus ?? "UNFULFILLED",
     currentShippingAmount: partial.currentShippingAmount ?? 0,
+    hasReducedGarmentQuantity: partial.hasReducedGarmentQuantity ?? false,
     shippingCity: partial.shippingCity ?? "Toronto",
     shippingCountryCode: partial.shippingCountryCode ?? "CA",
     shippingAddress: null,
@@ -71,8 +72,8 @@ assert(
   "shipping-paid should block",
 );
 assert(
-  passesCycleTagGate([TAGS.SHIPPING_PAID, TAGS.HOLD_FOR_NEXT_CYCLE]),
-  "hold-for-next-cycle overrides shipping-paid",
+  !passesCycleTagGate([TAGS.SHIPPING_PAID, TAGS.HOLD_FOR_NEXT_CYCLE]),
+  "shipping-paid always blocks re-invoicing, even with hold-for-next-cycle",
 );
 
 const sask = order({

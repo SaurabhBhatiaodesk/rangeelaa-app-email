@@ -28,7 +28,6 @@ export function preorderProductTags(
 ): string[] {
   return uniqueTags([
     workflowTags.groupTag || "group",
-    "dispatch skirt",
     workflowTags.preorderProductTag || "Web Saree",
   ]);
 }

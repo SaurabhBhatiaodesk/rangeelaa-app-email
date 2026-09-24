@@ -132,6 +132,16 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
       }
     )?.edges ?? [];
 
+  // A line's currentQuantity drops below its original quantity only when a
+  // garment was actually refunded/returned — a shipping-only or courtesy
+  // dollar refund never touches either field.
+  const hasReducedGarmentQuantity = lineEdges.some((edge) => {
+    const li = edge.node as { quantity?: number; currentQuantity?: number };
+    const original = Number(li.quantity ?? 0);
+    const current = Number(li.currentQuantity ?? li.quantity ?? 0);
+    return current < original;
+  });
+
   const lineItems: LineItemInfo[] = lineEdges.map((edge) => {
     const li = edge.node;
     const product = li.product as { tags?: string[] | string } | null;
@@ -157,6 +167,7 @@ function mapOrder(node: Record<string, unknown>): CycleOrder {
     currentShippingAmount: Number(
       currentShippingPriceSet?.shopMoney?.amount ?? 0,
     ),
+    hasReducedGarmentQuantity,
     shippingCity: shipping?.city ?? null,
     shippingCountryCode: shipping?.countryCodeV2 ?? null,
     shippingAddress: shipping
@@ -241,7 +252,8 @@ function isPool1Preorder(
   gateTags: CycleGateTags,
   routingTags: PreorderWorkflowTags,
 ): boolean {
-  if (isCancelledOrRefundedOrder(order)) return false;
+  if (isCancelledOrRefundedOrder(order, { allowUnreducedPartialRefund: true })) return false;
+  if ((order.displayFulfillmentStatus || "").toUpperCase() !== "UNFULFILLED") return false;
   if (classifyOrder(order, routingTags) !== "preorder") return false;
   if (!hasTag(order.tags, pieceMadeTag)) return false;
   if (!hasTag(order.tags, leavingForCanadaTag)) return false;
@@ -258,11 +270,11 @@ function isPool2Rtw(
   gateTags: CycleGateTags,
   routingTags: PreorderWorkflowTags,
 ): boolean {
-  if (isCancelledOrRefundedOrder(order)) return false;
+  if (isCancelledOrRefundedOrder(order, { allowUnreducedPartialRefund: true })) return false;
   if (classifyOrder(order, routingTags) !== "rtw") return false;
   const financial = (order.displayFinancialStatus || "").toUpperCase();
   const fulfillment = (order.displayFulfillmentStatus || "").toUpperCase();
-  if (financial !== "PAID") return false;
+  if (financial !== "PAID" && financial !== "PARTIALLY_REFUNDED") return false;
   if (fulfillment !== "UNFULFILLED") return false;
   if (!passesCycleTagGate(order.tags, gateTags)) return false;
   if (order.currentShippingAmount > 0) return false;
@@ -665,13 +677,14 @@ export async function runThursdayCycle(
         `tag:${pieceMadeTag}`,
         `tag:${leavingForCanadaTag}`,
         `tag:${arrivedInCanadaTag}`,
+        "fulfillment_status:unfulfilled",
       ].join(" AND "),
     ),
     fetchCycleOrders(
       admin,
       [
         "status:open",
-        "financial_status:paid",
+        "(financial_status:paid OR financial_status:partially_refunded)",
         "fulfillment_status:unfulfilled",
       ].join(" AND "),
     ),
