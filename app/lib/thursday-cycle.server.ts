@@ -679,6 +679,23 @@ export async function runThursdayCycle(
     ),
   ]);
 
+  console.log("Thursday cycle pool1 raw candidates", {
+    count: pool1Raw.length,
+    orders: pool1Raw.map((o) => ({
+      name: o.name,
+      email: o.email,
+      tags: o.tags,
+      displayFinancialStatus: o.displayFinancialStatus,
+      displayFulfillmentStatus: o.displayFulfillmentStatus,
+      currentShippingAmount: o.currentShippingAmount,
+      shippingCountryCode: o.shippingCountryCode,
+      shippingCity: o.shippingCity,
+      classification: classifyOrder(o, workflowTags),
+      lineItemProductTags: o.lineItems.map((li) => li.productTags),
+      preorderShippingItems: countPreorderProductShippingItems(o, workflowTags),
+    })),
+  });
+
   const pool1 = pool1Raw.filter((order) =>
     isPool1Preorder(
       order,
@@ -692,6 +709,11 @@ export async function runThursdayCycle(
   const pool2 = pool2Raw.filter((order) =>
     isPool2Rtw(order, gateTags, workflowTags),
   );
+
+  console.log("Thursday cycle pool1 eligible after filter", {
+    count: pool1.length,
+    names: pool1.map((o) => o.name),
+  });
 
   const byId = new Map<string, CycleOrder>();
   for (const order of [...pool1, ...pool2]) {
