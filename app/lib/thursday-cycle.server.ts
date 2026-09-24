@@ -679,6 +679,35 @@ export async function runThursdayCycle(
     ),
   ]);
 
+  try {
+    const probeQueries = [
+      `name:11629`,
+      `status:open AND name:11629`,
+      `status:open AND tag:"${pieceMadeTag}" AND tag:"${leavingForCanadaTag}" AND tag:"${arrivedInCanadaTag}" AND name:11629`,
+      `status:open AND tag:"${arrivedInCanadaTag}" AND fulfillment_status:unfulfilled AND name:11629`,
+    ];
+    for (const probeQuery of probeQueries) {
+      const probeJson = await graphqlJson(
+        admin,
+        `#graphql
+          query ThursdayProbe11629($query: String!) {
+            orders(first: 5, query: $query) {
+              edges { node { id name tags cancelledAt displayFulfillmentStatus displayFinancialStatus } }
+            }
+          }`,
+        { query: probeQuery },
+      );
+      console.log("Thursday cycle #11629 probe", {
+        probeQuery,
+        matches: probeJson.data?.orders?.edges?.map((e: { node: unknown }) => e.node) ?? [],
+      });
+    }
+  } catch (probeError) {
+    console.log("Thursday cycle #11629 probe failed", {
+      error: probeError instanceof Error ? probeError.message : String(probeError),
+    });
+  }
+
   console.log("Thursday cycle pool1 raw candidates", {
     count: pool1Raw.length,
     orders: pool1Raw.map((o) => ({
