@@ -674,9 +674,9 @@ export async function runThursdayCycle(
       admin,
       [
         "status:open",
-        `tag:${pieceMadeTag}`,
-        `tag:${leavingForCanadaTag}`,
-        `tag:${arrivedInCanadaTag}`,
+        `tag:"${pieceMadeTag}"`,
+        `tag:"${leavingForCanadaTag}"`,
+        `tag:"${arrivedInCanadaTag}"`,
         "fulfillment_status:unfulfilled",
       ].join(" AND "),
     ),
