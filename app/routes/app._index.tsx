@@ -320,6 +320,7 @@ export default function ShippingManagerIndex() {
   const cycleBusy = fetcher.state !== "idle";
   const [manualTestOpen, setManualTestOpen] = useState(false);
   const [thursdayDryRun, setThursdayDryRun] = useState(true);
+  const [thursdaySearch, setThursdaySearch] = useState("");
 
   useEffect(() => {
     const freshAlertIds = new Set(data.alerts.map((order) => order.id));
@@ -1135,22 +1136,67 @@ export default function ShippingManagerIndex() {
                 overflow="hidden"
               >
                 <s-box padding="base">
-                  <s-text type="strong">
-                    {thursdayResult.dryRun ? "Preview" : "Last run"}:{" "}
-                    {thursdayResult.customersProcessed} customer(s)
-                  </s-text>
+                  <s-stack direction="block" gap="small-200">
+                    <s-text type="strong">
+                      {thursdayResult.dryRun ? "Preview" : "Last run"}:{" "}
+                      {thursdayResult.customersProcessed} customer(s)
+                    </s-text>
+                    {thursdayResult.results.length > 0 && (
+                      <s-text-field
+                        label="Search by customer, email, or order number"
+                        labelAccessibilityVisibility="exclusive"
+                        placeholder="Search by customer, email, or order number"
+                        value={thursdaySearch}
+                        onChange={(
+                          event: Event & { currentTarget: { value: string } },
+                        ) => setThursdaySearch(event.currentTarget.value)}
+                      />
+                    )}
+                  </s-stack>
                 </s-box>
-                {thursdayResult.results.length === 0 ? (
-                  <>
-                    <s-divider color="base" />
-                    <s-box padding="base">
-                      <s-paragraph>
-                        No qualifying orders this cycle.
-                      </s-paragraph>
-                    </s-box>
-                  </>
-                ) : (
-                  <>
+                {(() => {
+                  const query = thursdaySearch.trim().toLowerCase();
+                  const filteredResults = query
+                    ? thursdayResult.results.filter((row) => {
+                        const haystack = [
+                          row.customerName || "",
+                          row.email,
+                          ...row.orderNames,
+                        ]
+                          .join(" ")
+                          .toLowerCase();
+                        return haystack.includes(query);
+                      })
+                    : thursdayResult.results;
+
+                  if (thursdayResult.results.length === 0) {
+                    return (
+                      <>
+                        <s-divider color="base" />
+                        <s-box padding="base">
+                          <s-paragraph>
+                            No qualifying orders this cycle.
+                          </s-paragraph>
+                        </s-box>
+                      </>
+                    );
+                  }
+
+                  if (filteredResults.length === 0) {
+                    return (
+                      <>
+                        <s-divider color="base" />
+                        <s-box padding="base">
+                          <s-paragraph>
+                            No results match "{thursdaySearch}".
+                          </s-paragraph>
+                        </s-box>
+                      </>
+                    );
+                  }
+
+                  return (
+                    <>
                     <s-divider color="base" />
                     <s-table>
                       <s-table-header-row>
@@ -1168,7 +1214,7 @@ export default function ShippingManagerIndex() {
                         </s-table-header>
                       </s-table-header-row>
                       <s-table-body>
-                        {thursdayResult.results.map((row) => (
+                        {filteredResults.map((row) => (
                           <s-table-row key={row.email}>
                             <s-table-cell>
                               <s-stack
@@ -1199,8 +1245,9 @@ export default function ShippingManagerIndex() {
                         ))}
                       </s-table-body>
                     </s-table>
-                  </>
-                )}
+                    </>
+                  );
+                })()}
               </s-box>
             )}
 
