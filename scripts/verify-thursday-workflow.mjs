@@ -476,10 +476,10 @@ function paymentWorld() {
   return world({ 'app/lib/send-status-email.server.ts': {} });
 }
 
-await check('Cancelled and refunded originals never enter either Thursday pool', async () => {
+await check('Cancelled, fully refunded, and voided originals never enter either Thursday pool', async () => {
   const nodes = [fixture(1, 2), fixture(2, 4, { productTags: ['group'], tags: readyTags })];
   for (const productTags of [['dress'], ['group']]) {
-    for (const options of [{ cancelledAt: '2026-09-15T00:00:00Z' }, { financial: 'REFUNDED' }, { financial: 'PARTIALLY_REFUNDED', currentQuantity: 10 }, { financial: 'VOIDED' }]) {
+    for (const options of [{ cancelledAt: '2026-09-15T00:00:00Z' }, { financial: 'REFUNDED' }, { financial: 'VOIDED' }]) {
       nodes.push(fixture(nodes.length + 1, 20, { ...options, productTags, tags: [...readyTags, 'hold-for-next-cycle'] }));
     }
   }
@@ -489,10 +489,10 @@ await check('Cancelled and refunded originals never enter either Thursday pool',
   assert.equal(result.results[0].itemCount, 6);
   assert.equal(result.results[0].shippingAmount, '23.26 CAD');
   assert.ok(calls.every((call) => !call.query.includes('mutation')));
-  return 'PASS: both pools exclude cancelled/refunded/partially-refunded/voided orders, even with a hold override';
+  return 'PASS: both pools exclude cancelled/fully-refunded/voided orders, even with a hold override';
 });
 
-await check('A shipping-only refund (garment quantity unchanged) does not disqualify an RTW order', async () => {
+await check('A partially refunded RTW order stays eligible for its full quantity when nothing was returned', async () => {
   const nodes = [fixture(1, 3, { financial: 'PARTIALLY_REFUNDED' })];
   const { admin, calls } = cycleAdmin(nodes);
   const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
@@ -502,22 +502,32 @@ await check('A shipping-only refund (garment quantity unchanged) does not disqua
   return 'PASS: a courtesy/shipping refund that never reduced the garment quantity still counts as unpaid shipping';
 });
 
-await check('A shipping-only refund (garment quantity unchanged) does not disqualify a preorder order', async () => {
+await check('A partially refunded preorder order stays eligible for its full quantity when nothing was returned', async () => {
   const nodes = [fixture(1, 2, { productTags: ['group'], tags: readyTags, financial: 'PARTIALLY_REFUNDED' })];
   const { admin, calls } = cycleAdmin(nodes);
   const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
   assert.equal(result.results.length, 1);
   assert.equal(result.results[0].itemCount, 2);
   assert.ok(calls.every((call) => !call.query.includes('mutation')));
-  return 'PASS: the same shipping-only refund exception applies to a preorder order';
+  return 'PASS: the same partial-refund eligibility applies to a preorder order';
 });
 
-await check('A refund that actually returns a garment still disqualifies the order', async () => {
+await check('A refund that returns some garments still bills for the remaining quantity', async () => {
   const nodes = [fixture(1, 3, { financial: 'PARTIALLY_REFUNDED', currentQuantity: 2 })];
+  const { admin, calls } = cycleAdmin(nodes);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].itemCount, 2);
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: the order stays in; only the returned piece drops out of the billed count';
+});
+
+await check('A refund that returns every unit of the only line item excludes the order (nothing left to bill)', async () => {
+  const nodes = [fixture(1, 3, { financial: 'PARTIALLY_REFUNDED', currentQuantity: 0 })];
   const { admin } = cycleAdmin(nodes);
   const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
   assert.equal(result.results.length, 0);
-  return 'PASS: a refund that reduced the garment quantity is a real return, not billable';
+  return 'PASS: zero remaining billable quantity means no invoice, not an error';
 });
 
 await check('Dispatch skirt items are billed as ordinary RTW pieces, including mixed orders', async () => {

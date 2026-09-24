@@ -24,7 +24,6 @@ export type CycleOrder = {
   displayFinancialStatus: string | null;
   displayFulfillmentStatus: string | null;
   currentShippingAmount: number;
-  hasReducedGarmentQuantity: boolean;
   shippingCity: string | null;
   shippingCountryCode: string | null;
   shippingAddress: {
@@ -108,27 +107,22 @@ export function parseAllowedShippingCountryCodes(
 }
 
 /**
- * A partial refund that never reduced any line item's quantity (a shipping
- * fee waived, a courtesy credit) does not disqualify the order — the garments
- * are all still owed and their shipping is still unpaid. A refund that did
- * remove/return a garment, a full refund, or a void still excludes it.
+ * A partially-refunded order stays eligible — only the specific refunded
+ * items drop out, via each line item's currentQuantity (see mapOrder). A
+ * full refund, a void, or a cancellation still excludes the whole order.
  */
 export function isCancelledOrRefundedOrder(
   order: {
     cancelledAt?: string | null;
     displayFinancialStatus?: string | null;
-    hasReducedGarmentQuantity?: boolean;
   },
-  options: { allowUnreducedPartialRefund?: boolean } = {},
+  options: { treatPartialRefundAsEligible?: boolean } = {},
 ): boolean {
   if (Boolean(order.cancelledAt)) return true;
   const status = (order.displayFinancialStatus || "").toUpperCase();
   if (status === "REFUNDED" || status === "VOIDED") return true;
   if (status === "PARTIALLY_REFUNDED") {
-    if (options.allowUnreducedPartialRefund && !order.hasReducedGarmentQuantity) {
-      return false;
-    }
-    return true;
+    return !options.treatPartialRefundAsEligible;
   }
   return false;
 }

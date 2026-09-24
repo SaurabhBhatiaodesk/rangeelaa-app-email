@@ -25,7 +25,6 @@ function order(partial: Partial<CycleOrder> & { tags: string[] }): CycleOrder {
     displayFinancialStatus: partial.displayFinancialStatus ?? "PAID",
     displayFulfillmentStatus: partial.displayFulfillmentStatus ?? "UNFULFILLED",
     currentShippingAmount: partial.currentShippingAmount ?? 0,
-    hasReducedGarmentQuantity: partial.hasReducedGarmentQuantity ?? false,
     shippingCity: partial.shippingCity ?? "Toronto",
     shippingCountryCode: partial.shippingCountryCode ?? "CA",
     shippingAddress: null,
