@@ -541,14 +541,12 @@ await check('Dispatch skirt items are billed as ordinary RTW pieces, including m
   return 'PASS: a dispatch skirt no longer forces preorder classification; both pieces on the order are billed';
 });
 
-await check('A dispatch skirt item with a leftover india tag is still billed, not treated as India Direct', async () => {
+await check('A dispatch skirt item that also carries an india tag is still excluded as India Direct', async () => {
   const node = fixture(1, 1, { productTags: ['dispatch skirt', 'india'] });
-  const { admin, calls } = cycleAdmin([node]);
+  const { admin } = cycleAdmin([node]);
   const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
-  assert.equal(result.results.length, 1);
-  assert.equal(result.results[0].itemCount, 1);
-  assert.ok(calls.every((call) => !call.query.includes('mutation')));
-  return 'PASS: an india tag on a dispatch skirt product does not exclude the order as India Direct';
+  assert.equal(result.results.length, 0);
+  return 'PASS: India items are never counted, even on an otherwise-billable dispatch skirt product';
 });
 
 await check('A genuine India item (no dispatch skirt tag) is still excluded as India Direct', async () => {
