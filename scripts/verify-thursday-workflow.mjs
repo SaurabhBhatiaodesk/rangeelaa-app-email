@@ -557,7 +557,7 @@ await check('A dispatch skirt item that also carries an india tag is still exclu
   const { admin } = cycleAdmin([node]);
   const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
   assert.equal(result.results.length, 0);
-  return 'PASS: India items are never counted, even on an otherwise-billable dispatch skirt product';
+  return 'PASS: only virtual products and india-tagged products are excluded; india always wins, even on a dispatch skirt';
 });
 
 await check('A genuine India item (no dispatch skirt tag) is still excluded as India Direct', async () => {
