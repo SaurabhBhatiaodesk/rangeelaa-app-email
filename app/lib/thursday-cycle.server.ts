@@ -21,7 +21,6 @@ import {
   classifyOrder,
   countPreorderProductShippingItems,
   countRtwShippingItems,
-  preorderProductTags,
 } from "./product-eligibility.server";
 
 const META_NAMESPACE = "rangeela";
@@ -295,14 +294,8 @@ function billableLineItemTitles(
 ): string[] {
   const classification = classifyOrder(order, workflowTags);
   if (classification === "india_direct") return [];
-  const isPreorder = classification === "preorder";
-  const tags = isPreorder ? preorderProductTags(workflowTags) : [];
   return order.lineItems
-    .filter((item) => {
-      if (item.requiresShipping === false) return false;
-      if (!isPreorder) return true;
-      return tags.some((tag) => hasTag(item.productTags, tag));
-    })
+    .filter((item) => item.requiresShipping !== false)
     .filter((item) => Number(item.quantity || 0) > 0)
     .map((item) => `${item.title} x${item.quantity}`);
 }

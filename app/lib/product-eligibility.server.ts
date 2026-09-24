@@ -88,19 +88,20 @@ export function classifyOrder(
   return "rtw";
 }
 
+/**
+ * Shipping is priced per piece, not per order: once an order is eligible as
+ * a preorder (it has the group/Web Saree tag and cleared the milestone
+ * check), every physical piece on it bills — not just the specific line
+ * item that carried the preorder tag.
+ */
 export function countPreorderProductShippingItems(
   order: ProductTaggedOrder,
-  workflowTags: Pick<
+  _workflowTags: Pick<
     PreorderWorkflowTags,
     "groupTag" | "preorderProductTag"
   >,
 ): number {
-  const tags = preorderProductTags(workflowTags);
-  return order.lineItems.reduce((sum, lineItem) => {
-    if (lineItem.requiresShipping === false) return sum;
-    if (!tags.some((tag) => hasTag(lineItem.productTags, tag))) return sum;
-    return sum + Number(lineItem.quantity || 0);
-  }, 0);
+  return countRtwShippingItems(order);
 }
 
 export function countRtwShippingItems(order: ProductTaggedOrder): number {

@@ -530,6 +530,17 @@ await check('A refund that returns every unit of the only line item excludes the
   return 'PASS: zero remaining billable quantity means no invoice, not an error';
 });
 
+await check('A preorder order bills every physical piece, not just the group/Web Saree-tagged line', async () => {
+  const node = fixture(1, 1, { productTags: ['group'], tags: readyTags });
+  node.lineItems.edges.push({ node: { title: 'Plain scarf', quantity: 1, currentQuantity: 1, requiresShipping: true, product: { tags: ['scarf'] } } });
+  const { admin, calls } = cycleAdmin([node]);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].itemCount, 2);
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: shipping is priced per piece; the untagged second line item on a preorder order is still billed';
+});
+
 await check('Dispatch skirt items are billed as ordinary RTW pieces, including mixed orders', async () => {
   const node = fixture(1, 1, { productTags: ['dispatch skirt'] });
   node.lineItems.edges.push({ node: { title: 'Plain top', quantity: 1, currentQuantity: 1, requiresShipping: true, product: { tags: ['top'] } } });
