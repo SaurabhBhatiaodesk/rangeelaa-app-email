@@ -1321,30 +1321,44 @@ export default function ShippingManagerIndex() {
                               </s-badge>
                             </s-table-cell>
                             <s-table-cell>
-                              {row.alreadySent ||
-                              justSentEmails.has(row.email.toLowerCase()) ? (
-                                <s-button variant="secondary" disabled>
-                                  Sent
-                                </s-button>
-                              ) : (
-                                <s-button
-                                  variant="secondary"
-                                  disabled={cycleBusy}
-                                  onClick={() =>
-                                    runThursdayForCustomer(
-                                      row.email,
-                                      thursdayDryRun,
-                                    )
-                                  }
-                                >
-                                  {busyAction ===
-                                  `thursday_run_single:${row.email}`
-                                    ? "Sending…"
-                                    : thursdayDryRun
-                                      ? "Preview this one"
-                                      : "Send Now"}
-                                </s-button>
-                              )}
+                              {(() => {
+                                const alreadySent =
+                                  row.alreadySent ||
+                                  justSentEmails.has(
+                                    row.email.toLowerCase(),
+                                  );
+                                return (
+                                  <s-stack
+                                    direction="block"
+                                    gap="small-100"
+                                  >
+                                    {alreadySent && (
+                                      <s-badge tone="success">
+                                        Already sent
+                                      </s-badge>
+                                    )}
+                                    <s-button
+                                      variant="secondary"
+                                      disabled={cycleBusy}
+                                      onClick={() =>
+                                        runThursdayForCustomer(
+                                          row.email,
+                                          thursdayDryRun,
+                                        )
+                                      }
+                                    >
+                                      {busyAction ===
+                                      `thursday_run_single:${row.email}`
+                                        ? "Sending…"
+                                        : thursdayDryRun
+                                          ? "Preview this one"
+                                          : alreadySent
+                                            ? "Resend"
+                                            : "Send Now"}
+                                    </s-button>
+                                  </s-stack>
+                                );
+                              })()}
                             </s-table-cell>
                           </s-table-row>
                         ))}

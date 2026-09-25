@@ -542,7 +542,7 @@ await check('A hold-for-next-cycle order that was already emailed once is flagge
   const freshRow = result.results.find((row) => row.email === 'fresh-customer@example.invalid');
   assert.equal(reopenedRow.alreadySent, true);
   assert.equal(freshRow.alreadySent, false);
-  return 'PASS: an order held back into a new cycle after already being emailed is marked alreadySent, so the button can disable instead of risking a duplicate';
+  return 'PASS: an order held back into a new cycle after already being emailed is marked alreadySent, so staff see an "Already sent" hint (button still stays clickable for a manual resend)';
 });
 
 await check('Cancelled, fully refunded, and voided originals never enter either Thursday pool', async () => {
