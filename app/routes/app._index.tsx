@@ -331,6 +331,7 @@ export default function ShippingManagerIndex() {
       itemCount: number;
       shippingAmount: string;
       invoiceUrl?: string;
+      alreadySent?: boolean;
       error?: string;
     }>;
   } | null>(null);
@@ -1320,10 +1321,11 @@ export default function ShippingManagerIndex() {
                               </s-badge>
                             </s-table-cell>
                             <s-table-cell>
-                              {justSentEmails.has(row.email.toLowerCase()) ? (
-                                <s-badge tone="success" color="strong">
+                              {row.alreadySent ||
+                              justSentEmails.has(row.email.toLowerCase()) ? (
+                                <s-button variant="secondary" disabled>
                                   Sent
-                                </s-badge>
+                                </s-button>
                               ) : (
                                 <s-button
                                   variant="secondary"

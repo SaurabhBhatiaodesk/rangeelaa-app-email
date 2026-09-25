@@ -529,6 +529,22 @@ await check('Thursday email status lists only thursday-email-sent orders and ref
   return 'PASS: status view shows only sent orders, with correct paid/unpaid state';
 });
 
+await check('A hold-for-next-cycle order that was already emailed once is flagged alreadySent', async () => {
+  const reopened = fixture(1, 1);
+  reopened.email = 'reopened-customer@example.invalid';
+  reopened.tags = ['hold-for-next-cycle', 'thursday-email-sent'];
+  const fresh = fixture(2, 1);
+  fresh.email = 'fresh-customer@example.invalid';
+  fresh.tags = [];
+  const { admin } = cycleAdmin([reopened, fresh]);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  const reopenedRow = result.results.find((row) => row.email === 'reopened-customer@example.invalid');
+  const freshRow = result.results.find((row) => row.email === 'fresh-customer@example.invalid');
+  assert.equal(reopenedRow.alreadySent, true);
+  assert.equal(freshRow.alreadySent, false);
+  return 'PASS: an order held back into a new cycle after already being emailed is marked alreadySent, so the button can disable instead of risking a duplicate';
+});
+
 await check('Cancelled, fully refunded, and voided originals never enter either Thursday pool', async () => {
   const nodes = [fixture(1, 2), fixture(2, 4, { productTags: ['group'], tags: readyTags })];
   for (const productTags of [['dress'], ['group']]) {

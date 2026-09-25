@@ -323,6 +323,7 @@ export type ThursdayCustomerResult = {
   draftOrderId?: string;
   invoiceUrl?: string;
   emailSent?: boolean;
+  alreadySent?: boolean;
   error?: string;
 };
 
@@ -798,6 +799,10 @@ export async function runThursdayCycle(
       continue;
     }
 
+    const alreadySent = orders.some((order) =>
+      hasTag(order.tags, workflowTags.thursdayEmailSentTag),
+    );
+
     const shippingAmount = shippingRate.amount;
     const row: ThursdayCustomerResult = {
       email,
@@ -805,6 +810,7 @@ export async function runThursdayCycle(
       orderNames,
       itemCount,
       shippingAmount: `${shippingAmount} ${shippingRate.currencyCode}`,
+      alreadySent,
     };
 
     if (dryRun) {
