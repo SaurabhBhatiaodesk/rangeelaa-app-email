@@ -349,6 +349,9 @@ export default function ShippingManagerIndex() {
   const [thursdayDryRun, setThursdayDryRun] = useState(true);
   const [thursdaySearch, setThursdaySearch] = useState("");
   const [sentSearch, setSentSearch] = useState("");
+  const [justSentEmails, setJustSentEmails] = useState<Set<string>>(
+    new Set(),
+  );
 
   useEffect(() => {
     const freshAlertIds = new Set(data.alerts.map((order) => order.id));
@@ -401,7 +404,12 @@ export default function ShippingManagerIndex() {
       setLastEmailRun({ rows: fetcher.data.rows });
     }
 
+    const isSingleCustomerRun = Boolean(
+      finishedAction?.startsWith("thursday_run_single:"),
+    );
+
     if (
+      !isSingleCustomerRun &&
       "dryRun" in fetcher.data &&
       "customersProcessed" in fetcher.data &&
       "results" in fetcher.data &&
@@ -412,6 +420,23 @@ export default function ShippingManagerIndex() {
         customersProcessed: Number(fetcher.data.customersProcessed || 0),
         results: fetcher.data.results,
       });
+    }
+
+    if (
+      isSingleCustomerRun &&
+      "results" in fetcher.data &&
+      Array.isArray(fetcher.data.results)
+    ) {
+      const email = finishedAction!
+        .slice("thursday_run_single:".length)
+        .toLowerCase();
+      const isDryRun = "dryRun" in fetcher.data ? Boolean(fetcher.data.dryRun) : true;
+      const singleResult = fetcher.data.results[0] as
+        | { error?: string }
+        | undefined;
+      if (!isDryRun && singleResult && !singleResult.error) {
+        setJustSentEmails((prev) => new Set(prev).add(email));
+      }
     }
 
     if ("message" in fetcher.data && fetcher.data.message) {
@@ -1295,23 +1320,29 @@ export default function ShippingManagerIndex() {
                               </s-badge>
                             </s-table-cell>
                             <s-table-cell>
-                              <s-button
-                                variant="secondary"
-                                disabled={cycleBusy}
-                                onClick={() =>
-                                  runThursdayForCustomer(
-                                    row.email,
-                                    thursdayDryRun,
-                                  )
-                                }
-                              >
-                                {busyAction ===
-                                `thursday_run_single:${row.email}`
-                                  ? "Sending…"
-                                  : thursdayDryRun
-                                    ? "Preview this one"
-                                    : "Send Now"}
-                              </s-button>
+                              {justSentEmails.has(row.email.toLowerCase()) ? (
+                                <s-badge tone="success" color="strong">
+                                  Sent
+                                </s-badge>
+                              ) : (
+                                <s-button
+                                  variant="secondary"
+                                  disabled={cycleBusy}
+                                  onClick={() =>
+                                    runThursdayForCustomer(
+                                      row.email,
+                                      thursdayDryRun,
+                                    )
+                                  }
+                                >
+                                  {busyAction ===
+                                  `thursday_run_single:${row.email}`
+                                    ? "Sending…"
+                                    : thursdayDryRun
+                                      ? "Preview this one"
+                                      : "Send Now"}
+                                </s-button>
+                              )}
                             </s-table-cell>
                           </s-table-row>
                         ))}
