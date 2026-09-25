@@ -476,6 +476,31 @@ function paymentWorld() {
   return world({ 'app/lib/send-status-email.server.ts': {} });
 }
 
+await check('targetEmail runs the cycle for only that one customer, leaving other eligible customers untouched', async () => {
+  const nodeA = fixture(1, 2);
+  nodeA.email = 'customer-a@example.invalid';
+  const nodeB = fixture(2, 3);
+  nodeB.email = 'customer-b@example.invalid';
+  const { admin, calls } = cycleAdmin([nodeA, nodeB]);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true, targetEmail: 'Customer-A@example.invalid' });
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].email, 'customer-a@example.invalid');
+  assert.equal(result.results[0].itemCount, 2);
+  assert.ok(calls.every((call) => !call.query.includes('mutation')));
+  return 'PASS: targetEmail (case-insensitive) scopes the run to a single customer without affecting others';
+});
+
+await check('Omitting targetEmail still processes every eligible customer (existing button unaffected)', async () => {
+  const nodeA = fixture(1, 2);
+  nodeA.email = 'customer-a@example.invalid';
+  const nodeB = fixture(2, 3);
+  nodeB.email = 'customer-b@example.invalid';
+  const { admin } = cycleAdmin([nodeA, nodeB]);
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
+  assert.equal(result.results.length, 2);
+  return 'PASS: no targetEmail means the batch run behaves exactly as before';
+});
+
 await check('Cancelled, fully refunded, and voided originals never enter either Thursday pool', async () => {
   const nodes = [fixture(1, 2), fixture(2, 4, { productTags: ['group'], tags: readyTags })];
   for (const productTags of [['dress'], ['group']]) {

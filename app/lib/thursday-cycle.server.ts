@@ -634,9 +634,10 @@ async function resolveExistingDraftForOrders(
  */
 export async function runThursdayCycle(
   admin: AdminGraphql,
-  options: { dryRun?: boolean; shop: string },
+  options: { dryRun?: boolean; shop: string; targetEmail?: string },
 ): Promise<ThursdayCycleResult> {
   const dryRun = Boolean(options.dryRun);
+  const targetEmail = options.targetEmail?.trim().toLowerCase() || null;
   const settings = await getShopSettings(options.shop);
   const workflowTags: PreorderWorkflowTags = settings.preorderTags;
   const pieceMadeTag = workflowTags.pieceMadeTag;
@@ -746,6 +747,7 @@ export async function runThursdayCycle(
   for (const order of byId.values()) {
     if (!order.email) continue;
     const key = order.email.toLowerCase();
+    if (targetEmail && key !== targetEmail) continue;
     const list = byEmail.get(key) ?? [];
     list.push(order);
     byEmail.set(key, list);

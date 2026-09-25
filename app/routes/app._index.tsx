@@ -187,8 +187,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "thursday_run") {
     const dryRun = formData.get("dryRun") === "1";
-    console.log("Thursday cycle action start", { dryRun, shop: session.shop });
-    return runThursdayCycle(admin, { dryRun, shop: session.shop });
+    const targetEmail = String(formData.get("onlyEmail") || "").trim() || undefined;
+    console.log("Thursday cycle action start", { dryRun, shop: session.shop, targetEmail });
+    return runThursdayCycle(admin, { dryRun, shop: session.shop, targetEmail });
   }
 
   if (intent === "friday_run") {
@@ -440,6 +441,14 @@ export default function ShippingManagerIndex() {
   ) => {
     setBusyAction(`${intent}:${dryRun ? "preview" : "run"}`);
     fetcher.submit({ intent, dryRun: dryRun ? "1" : "0" }, { method: "POST" });
+  };
+
+  const runThursdayForCustomer = (email: string, dryRun: boolean) => {
+    setBusyAction(`thursday_run_single:${email}`);
+    fetcher.submit(
+      { intent: "thursday_run", dryRun: dryRun ? "1" : "0", onlyEmail: email },
+      { method: "POST" },
+    );
   };
 
   const isBusy = (key: string) => busyAction === key && cycleBusy;
@@ -1212,6 +1221,9 @@ export default function ShippingManagerIndex() {
                         <s-table-header listSlot="inline">
                           Shipping
                         </s-table-header>
+                        <s-table-header listSlot="inline">
+                          Action
+                        </s-table-header>
                       </s-table-header-row>
                       <s-table-body>
                         {filteredResults.map((row) => (
@@ -1248,6 +1260,25 @@ export default function ShippingManagerIndex() {
                               <s-badge tone="success" color="strong">
                                 {row.shippingAmount}
                               </s-badge>
+                            </s-table-cell>
+                            <s-table-cell>
+                              <s-button
+                                variant="secondary"
+                                disabled={cycleBusy}
+                                onClick={() =>
+                                  runThursdayForCustomer(
+                                    row.email,
+                                    thursdayDryRun,
+                                  )
+                                }
+                              >
+                                {busyAction ===
+                                `thursday_run_single:${row.email}`
+                                  ? "Sending…"
+                                  : thursdayDryRun
+                                    ? "Preview this one"
+                                    : "Send Now"}
+                              </s-button>
                             </s-table-cell>
                           </s-table-row>
                         ))}
