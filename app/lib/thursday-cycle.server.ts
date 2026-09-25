@@ -1,4 +1,4 @@
-import { hasTag, normalizeTags } from "./tags";
+import { hasTag, normalizeTags, TAGS } from "./tags";
 import { parseShippingRateTable, selectTieredShippingRate } from "./shipping-rates";
 import {
   type AdminGraphql,
@@ -963,4 +963,81 @@ export async function runThursdayCycle(
 export async function previewThursdayPools(admin: AdminGraphql, shop: string) {
   const result = await runThursdayCycle(admin, { dryRun: true, shop });
   return result;
+}
+
+export type ThursdaySentOrderRow = {
+  id: string;
+  orderName: string;
+  email: string | null;
+  customerName: string | null;
+  paid: boolean;
+  updatedAt: string;
+};
+
+/**
+ * Read-only lookup of orders already tagged thursday-email-sent, so staff
+ * can check what has already gone out without re-running the cycle.
+ */
+export async function listThursdayEmailStatus(
+  admin: AdminGraphql,
+): Promise<ThursdaySentOrderRow[]> {
+  const rows: ThursdaySentOrderRow[] = [];
+  let after: string | null = null;
+  const pageSize = 50;
+  const seenCursors = new Set<string>();
+  const maxRows = 500;
+
+  for (;;) {
+    const json = await graphqlJson(
+      admin,
+      `#graphql
+        query ThursdayEmailStatusOrders($first: Int!, $after: String) {
+          orders(first: $first, after: $after, query: "tag:'${TAGS.THURSDAY_EMAIL_SENT}'", sortKey: UPDATED_AT, reverse: true) {
+            edges {
+              cursor
+              node {
+                id
+                name
+                email
+                updatedAt
+                tags
+                customer {
+                  displayName
+                }
+              }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }`,
+      { first: pageSize, after },
+    );
+
+    const connection = json.data?.orders as {
+      edges: Array<{ cursor: string; node: Record<string, unknown> }>;
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    };
+
+    for (const edge of connection?.edges ?? []) {
+      const node = edge.node;
+      const tags = normalizeTags(node.tags as string[] | string);
+      const customer = node.customer as { displayName?: string } | null;
+      rows.push({
+        id: node.id as string,
+        orderName: node.name as string,
+        email: (node.email as string | null) || null,
+        customerName: customer?.displayName ?? null,
+        paid: hasTag(tags, TAGS.SHIPPING_PAID),
+        updatedAt: node.updatedAt as string,
+      });
+    }
+
+    if (rows.length >= maxRows) break;
+    if (!connection?.pageInfo?.hasNextPage) break;
+    const nextAfter = connection.pageInfo.endCursor;
+    if (!nextAfter || seenCursors.has(nextAfter)) break;
+    seenCursors.add(nextAfter);
+    after = nextAfter;
+  }
+
+  return rows;
 }

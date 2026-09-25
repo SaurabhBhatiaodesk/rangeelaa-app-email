@@ -118,6 +118,11 @@ function cycleAdmin(nodes, { drafts = {}, createdDraftId = oldDraft } = {}) {
       const node = nodes.find((node) => node.id === variables.id);
       node.tags = node.tags.filter((tag) => !variables.tags.includes(tag));
       data = { tagsRemove: { userErrors: [] } };
+    } else if (query.includes('ThursdayEmailStatusOrders')) {
+      const candidates = nodes.filter((node) => node.tags.includes('thursday-email-sent'));
+      const offset = variables.after ? Number(variables.after) : 0;
+      const selected = candidates.slice(offset, offset + variables.first);
+      data = { orders: { edges: selected.map((node, index) => ({ node: { id: node.id, name: node.name, email: node.email, updatedAt: node.updatedAt ?? '2026-01-01T00:00:00Z', tags: node.tags, customer: node.customer }, cursor: String(offset + index + 1) })), pageInfo: { hasNextPage: offset + selected.length < candidates.length, endCursor: String(offset + selected.length) } } };
     }
     else throw new Error(`Unexpected cycle operation: ${query}`);
     return { json: async () => ({ data }) };
@@ -499,6 +504,29 @@ await check('Omitting targetEmail still processes every eligible customer (exist
   const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: true });
   assert.equal(result.results.length, 2);
   return 'PASS: no targetEmail means the batch run behaves exactly as before';
+});
+
+await check('Thursday email status lists only thursday-email-sent orders and reflects paid state', async () => {
+  const sent = fixture(1, 2);
+  sent.email = 'sent-customer@example.invalid';
+  sent.tags = ['thursday-email-sent'];
+  sent.updatedAt = '2026-02-05T10:00:00Z';
+  const sentAndPaid = fixture(2, 1);
+  sentAndPaid.email = 'paid-customer@example.invalid';
+  sentAndPaid.tags = ['thursday-email-sent', 'shipping-paid'];
+  sentAndPaid.updatedAt = '2026-02-06T10:00:00Z';
+  const neverSent = fixture(3, 1);
+  neverSent.email = 'never-sent@example.invalid';
+  neverSent.tags = [];
+  const { admin } = cycleAdmin([sent, sentAndPaid, neverSent]);
+  const rows = await world().load('app/lib/thursday-cycle.server.ts').listThursdayEmailStatus(admin);
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((row) => row.email !== 'never-sent@example.invalid'));
+  const paidRow = rows.find((row) => row.email === 'paid-customer@example.invalid');
+  const unpaidRow = rows.find((row) => row.email === 'sent-customer@example.invalid');
+  assert.equal(paidRow.paid, true);
+  assert.equal(unpaidRow.paid, false);
+  return 'PASS: status view shows only sent orders, with correct paid/unpaid state';
 });
 
 await check('Cancelled, fully refunded, and voided originals never enter either Thursday pool', async () => {

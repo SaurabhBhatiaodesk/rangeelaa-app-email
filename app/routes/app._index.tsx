@@ -23,6 +23,7 @@ import {
 import {
   previewThursdayPools,
   runThursdayCycle,
+  listThursdayEmailStatus,
 } from "../lib/thursday-cycle.server";
 import { parseAllowedShippingCountryCodes } from "../lib/cycle-shared.server";
 import { runFridayReset } from "../lib/friday-reset.server";
@@ -34,7 +35,7 @@ import {
 import { authenticate } from "../shopify.server";
 import { getShopSettings } from "../lib/klaviyo-settings.server";
 
-type TabId = "emails" | "thursday" | "alerts" | "friday";
+type TabId = "emails" | "thursday" | "alerts" | "friday" | "sent";
 type SessionWithUser = { user?: { id?: string | number } };
 type FetcherResultWithRows = {
   rows?: Array<{
@@ -65,6 +66,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     rawTab === "thursday" ||
     rawTab === "alerts" ||
     rawTab === "friday" ||
+    rawTab === "sent" ||
     rawTab === "emails"
       ? rawTab
       : "emails";
@@ -126,7 +128,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         admin,
         shopSettings.preorderTags,
       );
-      return { ...base, tab, preorders: [], alerts, thursdayPreview: null };
+      return {
+        ...base,
+        tab,
+        preorders: [],
+        alerts,
+        thursdayPreview: null,
+        thursdaySentOrders: [],
+      };
     }
 
     if (tab === "thursday") {
@@ -137,6 +146,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         preorders: [],
         alerts: [],
         thursdayPreview,
+        thursdaySentOrders: [],
+      };
+    }
+
+    if (tab === "sent") {
+      const thursdaySentOrders = await listThursdayEmailStatus(admin);
+      return {
+        ...base,
+        tab,
+        preorders: [],
+        alerts: [],
+        thursdayPreview: null,
+        thursdaySentOrders,
       };
     }
 
@@ -147,6 +169,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         preorders: [],
         alerts: [],
         thursdayPreview: null,
+        thursdaySentOrders: [],
       };
     }
 
@@ -156,6 +179,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       preorders: [],
       alerts: [],
       thursdayPreview: null,
+      thursdaySentOrders: [],
     };
   } catch (error) {
     const message =
@@ -166,6 +190,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       preorders: [],
       alerts: [],
       thursdayPreview: null,
+      thursdaySentOrders: [],
       loadError: message,
     };
   }
@@ -315,6 +340,7 @@ export default function ShippingManagerIndex() {
     rawTab === "thursday" ||
     rawTab === "alerts" ||
     rawTab === "friday" ||
+    rawTab === "sent" ||
     rawTab === "emails"
       ? rawTab
       : "emails";
@@ -322,6 +348,7 @@ export default function ShippingManagerIndex() {
   const [manualTestOpen, setManualTestOpen] = useState(false);
   const [thursdayDryRun, setThursdayDryRun] = useState(true);
   const [thursdaySearch, setThursdaySearch] = useState("");
+  const [sentSearch, setSentSearch] = useState("");
 
   useEffect(() => {
     const freshAlertIds = new Set(data.alerts.map((order) => order.id));
@@ -688,6 +715,12 @@ export default function ShippingManagerIndex() {
             number="04"
             label="Friday reset"
             onClick={() => setTab("friday")}
+          />
+          <TabButton
+            active={tab === "sent"}
+            number="05"
+            label="Thursday email status"
+            onClick={() => setTab("sent")}
           />
         </s-stack>
       </s-section>
@@ -1399,6 +1432,152 @@ export default function ShippingManagerIndex() {
                 Run Friday backup now
               </s-button>
             </s-button-group>
+          </s-stack>
+        </s-section>
+      )}
+
+      {tab === "sent" && (
+        <s-section heading="Thursday email status" padding="base">
+          <s-stack direction="block" gap="large">
+            <s-paragraph>
+              Orders currently tagged{" "}
+              <s-text type="strong">thursday-email-sent</s-text> — read-only,
+              does not send or change anything.
+            </s-paragraph>
+
+            <s-box
+              background="base"
+              borderWidth="base"
+              borderStyle="solid"
+              borderColor="subdued"
+              borderRadius="large-100"
+              padding="none"
+              overflow="hidden"
+            >
+              <s-box padding="base">
+                <s-stack direction="block" gap="small-200">
+                  <s-text type="strong">
+                    {data.thursdaySentOrders.length} order(s)
+                  </s-text>
+                  {data.thursdaySentOrders.length > 0 && (
+                    <s-text-field
+                      label="Search by customer, email, or order number"
+                      labelAccessibilityVisibility="exclusive"
+                      placeholder="Search by customer, email, or order number"
+                      value={sentSearch}
+                      onChange={(
+                        event: Event & { currentTarget: { value: string } },
+                      ) => setSentSearch(event.currentTarget.value)}
+                    />
+                  )}
+                </s-stack>
+              </s-box>
+              {(() => {
+                const query = sentSearch.trim().toLowerCase();
+                const filteredSent = query
+                  ? data.thursdaySentOrders.filter((row) => {
+                      const haystack = [
+                        row.customerName,
+                        row.email,
+                        row.orderName,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")
+                        .toLowerCase();
+                      return haystack.includes(query);
+                    })
+                  : data.thursdaySentOrders;
+
+                if (data.thursdaySentOrders.length === 0) {
+                  return (
+                    <>
+                      <s-divider color="base" />
+                      <s-box padding="base">
+                        <s-paragraph>
+                          No orders are currently tagged
+                          thursday-email-sent.
+                        </s-paragraph>
+                      </s-box>
+                    </>
+                  );
+                }
+
+                if (filteredSent.length === 0) {
+                  return (
+                    <>
+                      <s-divider color="base" />
+                      <s-box padding="base">
+                        <s-paragraph>
+                          No results match "{sentSearch}".
+                        </s-paragraph>
+                      </s-box>
+                    </>
+                  );
+                }
+
+                return (
+                  <>
+                    <s-divider color="base" />
+                    <s-table>
+                      <s-table-header-row>
+                        <s-table-header listSlot="primary">
+                          Customer
+                        </s-table-header>
+                        <s-table-header listSlot="secondary">
+                          Order
+                        </s-table-header>
+                        <s-table-header listSlot="labeled">
+                          Payment
+                        </s-table-header>
+                        <s-table-header listSlot="inline">
+                          Last updated
+                        </s-table-header>
+                      </s-table-header-row>
+                      <s-table-body>
+                        {filteredSent.map((row) => (
+                          <s-table-row key={row.id}>
+                            <s-table-cell>
+                              <s-stack direction="block" gap="small-200">
+                                <s-stack
+                                  direction="inline"
+                                  alignItems="center"
+                                  gap="small-200"
+                                >
+                                  <CustomerAvatar
+                                    name={
+                                      row.customerName || row.email || row.orderName
+                                    }
+                                  />
+                                  <s-text>
+                                    {row.customerName || row.email || "—"}
+                                  </s-text>
+                                </s-stack>
+                              </s-stack>
+                            </s-table-cell>
+                            <s-table-cell>
+                              <s-text>{row.orderName}</s-text>
+                            </s-table-cell>
+                            <s-table-cell>
+                              <s-badge
+                                tone={row.paid ? "success" : "warning"}
+                                color="strong"
+                              >
+                                {row.paid ? "Paid" : "Unpaid"}
+                              </s-badge>
+                            </s-table-cell>
+                            <s-table-cell>
+                              <s-text>
+                                {new Date(row.updatedAt).toLocaleString()}
+                              </s-text>
+                            </s-table-cell>
+                          </s-table-row>
+                        ))}
+                      </s-table-body>
+                    </s-table>
+                  </>
+                );
+              })()}
+            </s-box>
           </s-stack>
         </s-section>
       )}
