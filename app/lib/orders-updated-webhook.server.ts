@@ -1,7 +1,6 @@
 import type { AdminGraphql } from "./cycle-shared.server";
 import { graphqlJson } from "./cycle-shared.server";
 import { hasTag, normalizeTags } from "./tags";
-import { voidThursdayDraftForOrder } from "./friday-reset.server";
 import { getShopSettings } from "./klaviyo-settings.server";
 import { sendStatusEmailIfNeeded } from "./send-status-email.server";
 import {
@@ -276,66 +275,15 @@ async function processShippingInvoicePayment(
 }
 
 /**
- * Task 4b: if Shopify Flow (or anything else) added `pushed-to-next-weekend`
- * directly, void the linked Thursday draft — Flow can flip tags but cannot
- * call the Admin API draft mutation itself. Idempotent: no-op if the draft
- * metafield is already cleared (e.g. the manual Friday backup already ran).
+ * Disabled: a shipping invoice must never auto-expire, so `pushed-to-next-
+ * weekend` (whether added by Shopify Flow or anything else) no longer voids
+ * the linked Thursday draft. The draft only ever goes away when the
+ * customer pays or someone deliberately deletes/defers it.
  */
 export async function processPushedToNextWeekendVoid(
-  admin: AdminGraphql,
-  orderPayload: OrderWebhookPayload,
-  shop: string,
+  _admin: AdminGraphql,
+  _orderPayload: OrderWebhookPayload,
+  _shop: string,
 ) {
-  const settings = await getShopSettings(shop);
-  const tags = normalizeTags(orderPayload?.tags);
-  if (!hasTag(tags, settings.preorderTags.pushedToNextWeekendTag)) {
-    return;
-  }
-
-  const orderGid = normalizeOrderGid(
-    String(orderPayload?.admin_graphql_api_id || orderPayload?.id || ""),
-  );
-  if (!orderGid) {
-    console.log("pushed-to-next-weekend void skipped; invalid order id");
-    return;
-  }
-
-  try {
-    const order = await fetchOrderForClassification(admin, orderGid);
-    if (
-      !order ||
-      classifyOrder(order, settings.preorderTags) === "india_direct"
-    ) {
-      console.log(
-        "pushed-to-next-weekend void skipped; India Direct or not found",
-        orderGid,
-      );
-      return;
-    }
-
-    // Delivery may be delayed until after a newer cycle removed the wait marker.
-    if (
-      !hasTag(order.tags ?? [], settings.preorderTags.pushedToNextWeekendTag) ||
-      hasTag(order.tags ?? [], settings.preorderTags.shippingPaidTag)
-    ) {
-      return;
-    }
-
-    const result = await voidThursdayDraftForOrder(admin, orderGid);
-    if (!result.ok) {
-      console.error(
-        "Failed to void Thursday draft for pushed-to-next-weekend order",
-        orderGid,
-        result.error,
-      );
-    } else if (result.voided) {
-      console.log("Voided Thursday draft for pushed-to-next-weekend order", orderGid);
-    }
-  } catch (error) {
-    console.error(
-      "Error voiding Thursday draft for pushed-to-next-weekend order",
-      orderGid,
-      error,
-    );
-  }
+  return;
 }

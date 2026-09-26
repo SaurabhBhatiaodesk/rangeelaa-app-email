@@ -670,9 +670,8 @@ export default function ShippingManagerIndex() {
                 </span>
                 <s-paragraph>
                   Listen for Shipping Manager status tags, send Klaviyo status
-                  emails, create Thursday invoices, handle shipping-paid alerts,
-                  and run the Friday reset. Tags and template IDs are configured
-                  in{" "}
+                  emails, create Thursday invoices, and handle shipping-paid
+                  alerts. Tags and template IDs are configured in{" "}
                   <s-link href="/app/settings">Settings</s-link>.
                 </s-paragraph>
                 <s-paragraph>
@@ -1439,18 +1438,17 @@ export default function ShippingManagerIndex() {
               padding="large"
             >
               <s-stack direction="block" gap="base">
-                <s-badge tone="success" color="strong">
-                  Automatic via Shopify Flow
+                <s-badge tone="warning" color="strong">
+                  Disabled
                 </s-badge>
                 <s-paragraph>
-                  On Friday midnight (CST), Shopify Flow removes{" "}
-                  <s-text type="strong">thursday-email-sent</s-text> and adds{" "}
-                  <s-text type="strong">pushed-to-next-weekend</s-text>. The app
-                  then cancels the old unpaid draft invoice.
+                  A shipping invoice must never auto-expire, so this reset no
+                  longer deletes or cancels anything — an unpaid invoice stays
+                  open until the customer pays, or someone deliberately
+                  deletes/defers it (e.g. via the Wait link).
                 </s-paragraph>
                 <s-paragraph>
-                  Use the buttons below only as a manual backup if Flow did not
-                  run.
+                  The buttons below are safe to click but do nothing.
                 </s-paragraph>
               </s-stack>
             </s-box>

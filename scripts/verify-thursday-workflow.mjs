@@ -398,7 +398,7 @@ await check('Live manual cycle sends signed links and clears old wait tag first'
   return 'PASS: manual run event has valid invoice/wait links; wait marker removed before linking';
 });
 
-await check('Delayed wait webhooks cannot void a newer cycle or paid shipment', async () => {
+await check('pushed-to-next-weekend never voids a draft (auto-expiry disabled)', async () => {
   for (const tags of [[], ['pushed-to-next-weekend', 'shipping-paid'], ['pushed-to-next-weekend']]) {
     let voids = 0;
     const w = world({
@@ -407,26 +407,26 @@ await check('Delayed wait webhooks cannot void a newer cycle or paid shipment', 
     });
     const admin = { graphql: async () => ({ json: async () => ({ data: { order: { email: 'test@example.invalid', tags, lineItems: { edges: [{ node: { quantity: 1, requiresShipping: true, product: { tags: ['dress'] } } }] } } } }) }) };
     await w.load('app/lib/orders-updated-webhook.server.ts').processPushedToNextWeekendVoid(admin, { id: '1', tags: 'pushed-to-next-weekend' }, shop);
-    assert.equal(voids, tags.length === 1 ? 1 : 0);
+    assert.equal(voids, 0);
   }
-  return 'PASS: fresh order state determines whether the webhook may void';
+  return 'PASS: an invoice must never auto-expire, so this webhook path no longer voids the draft under any tag combination';
 });
 
-await check('Friday reset preserves references when invoice deletion fails', async () => {
+await check('Friday reset is disabled and never touches an order or its draft', async () => {
   const state = waitAdmin({ deleteFailure: true });
   const admin = { graphql: async (query, options) => {
     if (query.includes('FridayUnpaidThursdayOrders')) {
-      const node = fixture(1, 1, { tags: ['thursday-email-sent'] });
-      node.metafield = { id: 'meta-1', value: oldDraft };
-      return { json: async () => ({ data: { orders: { edges: [{ node }] } } }) };
+      throw new Error('runFridayReset must not query orders while disabled');
     }
     return state.admin.graphql(query, options);
   } };
   const result = await world().load('app/lib/friday-reset.server.ts').runFridayReset(admin, { shop, dryRun: false });
-  assert.equal(result.ok, false);
+  assert.equal(result.ok, true);
+  assert.equal(result.draftsDeleted, 0);
+  assert.equal(result.ordersProcessed, 0);
   assert.equal(state.orders.get(orderId).draftId, oldDraft);
   assert.ok(state.orders.get(orderId).tags.includes('thursday-email-sent'));
-  return 'PASS: Friday deletion failure does not orphan the invoice';
+  return 'PASS: Friday reset is a no-op — an unpaid invoice stays fully linked and open indefinitely';
 });
 
 const readyTags = ['piece-made-notified', 'leaving-for-canada-notified', 'arrived-in-canada-notified'];
