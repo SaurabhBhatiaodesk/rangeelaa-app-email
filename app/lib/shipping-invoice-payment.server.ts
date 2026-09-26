@@ -84,7 +84,13 @@ export async function reconcileLinkedShippingOrders(
       );
       const order = json.data?.order;
       if (!order) throw new Error(`Cannot load linked order ${orderId}`);
-      if (isCancelledOrRefundedOrder(order)) continue;
+      if (isCancelledOrRefundedOrder(order)) {
+        console.warn("Shipping invoice reconcile skipped: original order is cancelled/refunded", {
+          orderId,
+          invoiceId: invoice.id,
+        });
+        continue;
+      }
       if (order.lineItems?.pageInfo?.hasNextPage) {
         throw new Error(
           `Cannot safely classify more than 250 line items on ${orderId}`,
@@ -108,7 +114,13 @@ export async function reconcileLinkedShippingOrders(
           )
           .filter((item: { quantity: number }) => item.quantity > 0),
       };
-      if (classifyOrder(taggedOrder, workflowTags) === "india_direct") continue;
+      if (classifyOrder(taggedOrder, workflowTags) === "india_direct") {
+        console.warn("Shipping invoice reconcile skipped: original order is India Direct", {
+          orderId,
+          invoiceId: invoice.id,
+        });
+        continue;
+      }
 
       // Do not let an old payment/refund change an original that now belongs to a newer invoice.
       const draftIds = [
@@ -141,7 +153,18 @@ export async function reconcileLinkedShippingOrders(
         }
         draftInvoices.set(draftId, paidOrderId);
       }
-      if (draftInvoices.get(draftId) !== invoice.id) continue;
+      if (draftInvoices.get(draftId) !== invoice.id) {
+        console.warn(
+          "Shipping invoice reconcile skipped: linked draft's completed order does not match this invoice",
+          {
+            orderId,
+            draftId,
+            invoiceId: invoice.id,
+            draftResolvedToOrderId: draftInvoices.get(draftId),
+          },
+        );
+        continue;
+      }
 
       if (invoice.financialStatus === "PAID") {
         if (!hasTag(taggedOrder.tags, workflowTags.shippingPaidTag)) {
@@ -158,12 +181,23 @@ export async function reconcileLinkedShippingOrders(
         continue;
       }
 
-      if (order.displayFulfillmentStatus === "FULFILLED") continue;
+      if (order.displayFulfillmentStatus === "FULFILLED") {
+        console.warn("Shipping invoice refund reopen skipped: original order is already fulfilled", {
+          orderId,
+          invoiceId: invoice.id,
+        });
+        continue;
+      }
       const previous: RefundReceipt | null = order.refund?.value
         ? JSON.parse(order.refund.value)
         : null;
-      if (previous?.invoiceId === invoice.id && previous.state === "complete")
+      if (previous?.invoiceId === invoice.id && previous.state === "complete") {
+        console.warn("Shipping invoice refund reopen skipped: already reconciled for this invoice", {
+          orderId,
+          invoiceId: invoice.id,
+        });
         continue;
+      }
       const receipt: RefundReceipt = {
         invoiceId: invoice.id,
         draftId,

@@ -35,7 +35,7 @@ function world(overrides = {}, env = {}) {
       assert.ok(candidate, `Unresolved dependency: ${specifier}`);
       return load(candidate);
     };
-    const context = { module, exports: module.exports, require, process: { env: environment }, console: { log() {}, error() {} }, URL, Request, Response, Buffer, setTimeout, clearTimeout, fetch: () => { throw new Error('Network disabled for review'); } };
+    const context = { module, exports: module.exports, require, process: { env: environment }, console: { log() {}, warn() {}, error() {} }, URL, Request, Response, Buffer, setTimeout, clearTimeout, fetch: () => { throw new Error('Network disabled for review'); } };
     vm.runInNewContext(code, context, { filename: path });
     return module.exports;
   }
