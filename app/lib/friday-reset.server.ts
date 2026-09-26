@@ -20,7 +20,7 @@ export type FridayResetResult = {
   message: string;
 };
 
-type MutationOutcome = { ok: true } | { ok: false; error: string };
+export type MutationOutcome = { ok: true } | { ok: false; error: string };
 
 function userErrorsToMessage(
   userErrors: Array<{ message: string }> | undefined,
@@ -33,7 +33,7 @@ function isDraftNotFoundMessage(message: string): boolean {
   return /draft order not found/i.test(message);
 }
 
-async function deleteDraftOrder(
+export async function deleteDraftOrder(
   admin: AdminGraphql,
   draftId: string,
 ): Promise<MutationOutcome> {

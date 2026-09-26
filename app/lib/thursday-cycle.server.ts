@@ -17,6 +17,7 @@ import {
   type PreorderWorkflowTags,
 } from "./klaviyo-settings.server";
 import { buildThursdayPayUrl, buildThursdayWaitUrl } from "./thursday-wait-link.server";
+import { deleteDraftOrder } from "./friday-reset.server";
 import {
   classifyOrder,
   countPreorderProductShippingItems,
@@ -612,16 +613,26 @@ async function resolveExistingDraftForOrders(
   );
   const expectedIds = new Set(orders.map((order) => order.id));
   const payable = draft.totalPriceSet?.presentmentMoney;
-  if (
-    sourceIds.size !== expectedIds.size ||
-    ![...sourceIds].every((id) => expectedIds.has(id)) ||
-    payable?.currencyCode !== expectedCurrency ||
-    Number(payable?.amount) !== Number(expectedAmount)
-  ) {
-    throw new Error(
-      `Unpaid Thursday draft ${draft.id} no longer matches the eligible orders or shipping rate. Defer the old unpaid invoice before running the cycle again.`,
-    );
+  const matches =
+    sourceIds.size === expectedIds.size &&
+    [...sourceIds].every((id) => expectedIds.has(id)) &&
+    payable?.currencyCode === expectedCurrency &&
+    Number(payable?.amount) === Number(expectedAmount);
+
+  if (!matches) {
+    // The billable set changed since this unpaid invoice was created (e.g. a
+    // new item arrived). It must never just sit stale or block the cycle, so
+    // supersede it with a fresh invoice instead of erroring out — this is
+    // never a time-based expiry, only ever an immediate, active replacement.
+    const deleted = await deleteDraftOrder(admin, draft.id);
+    if (!deleted.ok) {
+      throw new Error(
+        `Unpaid Thursday draft ${draft.id} no longer matches the eligible orders or shipping rate, and could not be superseded: ${deleted.error}`,
+      );
+    }
+    return null;
   }
+
   return {
     id: draft.id,
     name: draft.name || draft.id,

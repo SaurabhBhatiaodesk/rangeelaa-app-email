@@ -107,6 +107,7 @@ function cycleAdmin(nodes, { drafts = {}, createdDraftId = oldDraft } = {}) {
       data = { order: { lineItems: { edges: selected, pageInfo: { hasNextPage: offset + selected.length < edges.length, endCursor: String(offset + selected.length) } } } };
     } else if (query.includes('CreateThursdayDraft')) data = { draftOrderCreate: { draftOrder: { id: createdDraftId, name: '#D100', invoiceUrl: 'https://review.invalid/invoice' }, userErrors: [] } };
     else if (query.includes('VerifyThursdayDraft')) data = { draftOrder: drafts[variables.id] ?? { id: variables.id, name: '#D100', invoiceUrl: 'https://review.invalid/invoice', status: 'OPEN', order: null } };
+    else if (query.includes('DeleteThursdayDraft')) data = { draftOrderDelete: { deletedId: variables.input.id, userErrors: [] } };
     else if (query.includes('SetThursdayDraftMetafield')) {
       for (const meta of variables.metafields) nodes.find((node) => node.id === meta.ownerId).metafield = { value: meta.value };
       data = { metafieldsSet: { userErrors: [] } };
@@ -841,7 +842,7 @@ await check('Webhook routes request retries for payment/refund failures', async 
   return 'PASS: payment/refund failures produce retryable responses even when status emails fail separately';
 });
 
-await check('Existing unpaid invoice is reused only when its eligible orders and payable amount still match', async () => {
+await check('Existing unpaid invoice is reused when it still matches, or superseded with a fresh one when it does not', async () => {
   for (const mismatch of ['none', 'orders', 'amount', 'currency']) {
     const nodes = [fixture(1, 2)];
     nodes[0].metafield = { value: oldDraft };
@@ -854,11 +855,42 @@ await check('Existing unpaid invoice is reused only when its eligible orders and
     let sent = 0;
     const w = world({ 'app/lib/klaviyo.server.ts': { sendThursdayInvoiceEmail: async () => { sent++; return { ok: true }; } } });
     const result = await w.load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: false });
-    assert.equal(sent, mismatch === 'none' ? 1 : 0);
-    if (mismatch !== 'none') assert.match(result.results[0].error, /no longer matches/);
-    assert.ok(calls.every((call) => !call.query.includes('CreateThursdayDraft')));
+    assert.equal(sent, 1);
+    assert.ok(!result.results[0].error);
+    const deleted = calls.some((call) => call.query.includes('DeleteThursdayDraft'));
+    const created = calls.some((call) => call.query.includes('CreateThursdayDraft'));
+    if (mismatch === 'none') {
+      assert.equal(deleted, false);
+      assert.equal(created, false);
+      assert.equal(result.results[0].draftOrderId, oldDraft);
+    } else {
+      assert.equal(deleted, true);
+      assert.equal(created, true);
+    }
   }
-  return 'PASS: valid retry reuses the invoice; changed order group, rate or currency blocks a stale payment link';
+  return 'PASS: a matching unpaid invoice is reused as-is; a stale one (changed order group, rate or currency) is deleted and superseded by a fresh invoice instead of blocking the cycle';
+});
+
+await check('A stale unpaid invoice that cannot be deleted blocks the cycle instead of silently duplicating', async () => {
+  const nodes = [fixture(1, 2)];
+  nodes[0].metafield = { value: oldDraft };
+  const draft = {
+    id: oldDraft, name: '#D100', invoiceUrl: 'https://review.invalid/existing', status: 'OPEN', order: null,
+    customAttributes: [{ key: 'source_order_ids', value: `${orderId},gid://shopify/Order/2` }],
+    totalPriceSet: { presentmentMoney: { amount: '19.52', currencyCode: 'CAD' } },
+  };
+  const { admin: baseAdmin, calls } = cycleAdmin(nodes, { drafts: { [oldDraft]: draft } });
+  const admin = { graphql: async (query, options) => {
+    if (query.includes('DeleteThursdayDraft')) {
+      calls.push({ query, variables: options?.variables ?? {} });
+      return { json: async () => ({ data: { draftOrderDelete: { deletedId: null, userErrors: [{ message: 'Draft deletion rejected' }] } } }) };
+    }
+    return baseAdmin.graphql(query, options);
+  } };
+  const result = await world().load('app/lib/thursday-cycle.server.ts').runThursdayCycle(admin, { shop, dryRun: false });
+  assert.match(result.results[0].error, /no longer matches/);
+  assert.ok(calls.every((call) => !call.query.includes('CreateThursdayDraft')));
+  return 'PASS: a stale invoice that fails to delete still blocks the cycle rather than risking two open invoices for the same orders';
 });
 
 await check('Completed paid or partially refunded invoices cannot be reused or fully recharged', async () => {
