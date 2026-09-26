@@ -319,6 +319,10 @@ export async function processPushedToNextWeekendVoid(
       !hasTag(order.tags ?? [], settings.preorderTags.pushedToNextWeekendTag) ||
       hasTag(order.tags ?? [], settings.preorderTags.shippingPaidTag)
     ) {
+      console.log(
+        "pushed-to-next-weekend void skipped; order state moved on since the webhook fired",
+        orderGid,
+      );
       return;
     }
 
