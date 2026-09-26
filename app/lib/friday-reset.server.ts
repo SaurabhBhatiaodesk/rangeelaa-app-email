@@ -4,12 +4,23 @@ import {
   graphqlJson,
 } from "./cycle-shared.server";
 import { getShopSettings } from "./klaviyo-settings.server";
+import {
+  classifyOrder,
+  countPreorderProductShippingItems,
+  countRtwShippingItems,
+} from "./product-eligibility.server";
 
 const META_NAMESPACE = "rangeela";
 const META_DRAFT_KEY = "thursday_draft_id";
 const SIDEKICK_META_NAMESPACE = "sidekick";
 const SIDEKICK_META_DRAFT_KEY = "draft_order_id";
 const SIDEKICK_META_THURSDAY_DRAFT_KEY = "thursday_draft_id";
+
+// A freshly created invoice must get a fair shot before Friday reset can
+// touch it — otherwise one created hours (or minutes) before the reset runs
+// gets killed with no real chance to pay. Anything older than this is a
+// normal week-old invoice and resets as before.
+const MIN_UNPAID_INVOICE_AGE_MS = 24 * 60 * 60 * 1000;
 
 export type FridayResetResult = {
   ok: boolean;
@@ -52,6 +63,24 @@ export async function deleteDraftOrder(
   if (error && isDraftNotFoundMessage(error)) return { ok: true };
   if (error) return { ok: false, error: `draft delete: ${error}` };
   return { ok: true };
+}
+
+async function isDraftTooRecentToReset(
+  admin: AdminGraphql,
+  draftId: string,
+): Promise<boolean> {
+  const json = await graphqlJson(
+    admin,
+    `#graphql
+      query FridayResetDraftAge($id: ID!) {
+        draftOrder(id: $id) { createdAt }
+      }`,
+    { id: draftId },
+  );
+  const createdAt = json.data?.draftOrder?.createdAt;
+  if (!createdAt) return false;
+  const ageMs = Date.now() - new Date(createdAt).getTime();
+  return ageMs >= 0 && ageMs < MIN_UNPAID_INVOICE_AGE_MS;
 }
 
 async function removeTag(
@@ -151,7 +180,8 @@ async function fetchOrderDraftMetafield(
 /**
  * Voids (deletes) the Thursday draft order linked to `orderId`, if one is
  * still linked via the thursday_draft_id metafield. Idempotent — a no-op
- * (ok: true, voided: false) if there is no linked draft (already cleared).
+ * (ok: true, voided: false) if there is no linked draft (already cleared),
+ * and also a no-op if the draft is too new to reset yet.
  *
  * Shared by:
  * - the bulk Friday backup sweep (runFridayReset)
@@ -166,6 +196,10 @@ export async function voidThursdayDraftForOrder(
   const metafield = await fetchOrderDraftMetafield(admin, orderId);
   const draftId = metafield?.value;
   if (!draftId) {
+    return { ok: true, voided: false };
+  }
+
+  if (await isDraftTooRecentToReset(admin, draftId)) {
     return { ok: true, voided: false };
   }
 
@@ -293,21 +327,178 @@ export async function applyThursdayWaitChoice(
 }
 
 /**
- * Disabled: a shipping invoice must never auto-expire. It stays open until
- * the customer pays, or someone deliberately uses the Wait link / deletes
- * the draft themselves — never on a schedule.
+ * Friday backup reset (primary path = Shopify Flow tags + orders/updated void).
+ *
+ * Backup when Flow did not run, for every unpaid Thursday invoice that is
+ * at least MIN_UNPAID_INVOICE_AGE_MS old (a brand-new invoice gets skipped
+ * this run and picked up on a later one instead):
+ * - delete linked draft order
+ * - remove thursday-email-sent
+ * - add pushed-to-next-weekend
+ * - clear thursday draft metafield
+ *
+ * Note: adding pushed-to-next-weekend also triggers orders/updated, which voids
+ * the draft if metafield still present — safe if draft already deleted here
+ * (voidThursdayDraftForOrder is idempotent).
  */
 export async function runFridayReset(
   admin: AdminGraphql,
   options: { dryRun?: boolean; shop: string },
 ): Promise<FridayResetResult> {
+  const dryRun = Boolean(options.dryRun);
+  const errors: string[] = [];
+  let ordersProcessed = 0;
+  let draftsDeleted = 0;
+
+  const settings = await getShopSettings(options.shop);
+  const thursdayEmailSentTag = settings.preorderTags.thursdayEmailSentTag;
+  const shippingPaidTag = settings.preorderTags.shippingPaidTag;
+  const pushedToNextWeekendTag = settings.preorderTags.pushedToNextWeekendTag;
+
+  const json = await graphqlJson(
+    admin,
+    `#graphql
+      query FridayUnpaidThursdayOrders($first: Int!, $query: String!) {
+        orders(first: $first, query: $query) {
+          edges {
+            node {
+              id
+              name
+              tags
+              lineItems(first: 250) {
+                edges {
+                  node {
+                    quantity
+                    requiresShipping
+                    product {
+                      tags
+                    }
+                  }
+                }
+              }
+              metafield(namespace: "${META_NAMESPACE}", key: "${META_DRAFT_KEY}") {
+                id
+                value
+              }
+            }
+          }
+        }
+      }`,
+    {
+      first: 100,
+      query: `tag:${thursdayEmailSentTag} AND -tag:${shippingPaidTag}`,
+    },
+  );
+
+  const edges = json.data?.orders?.edges ?? [];
+  const deletedDrafts = new Set<string>();
+  const tooRecentDrafts = new Map<string, boolean>();
+
+  for (const edge of edges) {
+    const order = edge.node as {
+      id: string;
+      name: string;
+      tags: string[] | string;
+      lineItems?: {
+        edges?: Array<{
+          node?: {
+            quantity?: number;
+            requiresShipping?: boolean;
+            product?: { tags?: string[] | string } | null;
+          };
+        }>;
+      };
+      metafield: { id?: string; value?: string } | null;
+    };
+
+    const tags = normalizeTags(order.tags);
+    if (!hasTag(tags, thursdayEmailSentTag)) continue;
+    if (hasTag(tags, shippingPaidTag)) continue;
+    const lineItems = (order.lineItems?.edges ?? []).map((lineEdge) => ({
+      quantity: Number(lineEdge.node?.quantity || 0),
+      requiresShipping: lineEdge.node?.requiresShipping !== false,
+      productTags: normalizeTags(lineEdge.node?.product?.tags),
+    }));
+    const classification = classifyOrder(
+      { tags, lineItems },
+      settings.preorderTags,
+    );
+    if (classification === "india_direct") continue;
+    if (
+      classification === "preorder" &&
+      countPreorderProductShippingItems(
+        { tags, lineItems },
+        settings.preorderTags,
+      ) < 1
+    ) {
+      continue;
+    }
+    if (classification === "rtw" && countRtwShippingItems({ lineItems }) < 1) {
+      continue;
+    }
+
+    const draftId = order.metafield?.value;
+
+    if (draftId) {
+      if (!tooRecentDrafts.has(draftId)) {
+        tooRecentDrafts.set(draftId, await isDraftTooRecentToReset(admin, draftId));
+      }
+      if (tooRecentDrafts.get(draftId)) {
+        // Give a freshly created invoice its full window before resetting it.
+        continue;
+      }
+    }
+
+    ordersProcessed += 1;
+
+    if (dryRun) continue;
+
+    try {
+      if (draftId && !deletedDrafts.has(draftId)) {
+        const del = await deleteDraftOrder(admin, draftId);
+        if (!del.ok) {
+          errors.push(`${order.name}: ${del.error}`);
+          continue;
+        } else {
+          draftsDeleted += 1;
+          deletedDrafts.add(draftId);
+        }
+      }
+
+      const removed = await removeTag(admin, order.id, thursdayEmailSentTag);
+      if (!removed.ok) errors.push(`${order.name}: ${removed.error}`);
+
+      const added = await addTag(admin, order.id, pushedToNextWeekendTag);
+      if (!added.ok) errors.push(`${order.name}: ${added.error}`);
+
+      if (order.metafield?.id) {
+        const cleared = await clearThursdayDraftMetafield(admin, order.id);
+        if (!cleared.ok) errors.push(`${order.name}: ${cleared.error}`);
+      }
+    } catch (error) {
+      errors.push(
+        `${order.name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  const summary = dryRun
+    ? `Dry run: ${ordersProcessed} unpaid thursday order(s) would reset`
+    : `Friday reset: ${ordersProcessed} order(s), ${draftsDeleted} draft(s) deleted`;
+
+  const message =
+    errors.length > 0
+      ? `${summary} — ${errors.length} issue(s): ${errors.slice(0, 3).join("; ")}${
+          errors.length > 3 ? `; +${errors.length - 3} more` : ""
+        }`
+      : summary;
+
   return {
-    ok: true,
-    dryRun: Boolean(options.dryRun),
-    ordersProcessed: 0,
-    draftsDeleted: 0,
-    errors: [],
-    message:
-      "Friday reset is disabled: shipping invoices no longer auto-expire and stay open until paid.",
+    ok: errors.length === 0,
+    dryRun,
+    ordersProcessed,
+    draftsDeleted: dryRun ? 0 : draftsDeleted,
+    errors,
+    message,
   };
 }

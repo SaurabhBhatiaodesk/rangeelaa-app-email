@@ -55,6 +55,8 @@ function waitAdmin({ currentDraft = oldDraft, deleteFailure = false, paid = fals
       data = { order: order ? { tags: [...order.tags], cancelledAt: order.cancelledAt ?? null, metafield: order.draftId ? { id: 'meta-1', value: order.draftId } : null } : null };
     } else if (query.includes('ThursdayWaitDraft')) {
       data = { draftOrder: draftExists ? { id: variables.id, status: completed ? 'COMPLETED' : 'OPEN', order: completed ? { id: 'gid://shopify/Order/999' } : null } : null };
+    } else if (query.includes('FridayResetDraftAge')) {
+      data = { draftOrder: { createdAt: '2020-01-01T00:00:00Z' } };
     } else if (query.includes('DeleteThursdayDraft')) {
       const fail = failures.has('DeleteThursdayDraft');
       if (!fail) draftExists = false;
@@ -399,7 +401,7 @@ await check('Live manual cycle sends signed links and clears old wait tag first'
   return 'PASS: manual run event has valid invoice/wait links; wait marker removed before linking';
 });
 
-await check('pushed-to-next-weekend never voids a draft (auto-expiry disabled)', async () => {
+await check('Delayed wait webhooks cannot void a newer cycle or paid shipment', async () => {
   for (const tags of [[], ['pushed-to-next-weekend', 'shipping-paid'], ['pushed-to-next-weekend']]) {
     let voids = 0;
     const w = world({
@@ -408,26 +410,71 @@ await check('pushed-to-next-weekend never voids a draft (auto-expiry disabled)',
     });
     const admin = { graphql: async () => ({ json: async () => ({ data: { order: { email: 'test@example.invalid', tags, lineItems: { edges: [{ node: { quantity: 1, requiresShipping: true, product: { tags: ['dress'] } } }] } } } }) }) };
     await w.load('app/lib/orders-updated-webhook.server.ts').processPushedToNextWeekendVoid(admin, { id: '1', tags: 'pushed-to-next-weekend' }, shop);
-    assert.equal(voids, 0);
+    assert.equal(voids, tags.length === 1 ? 1 : 0);
   }
-  return 'PASS: an invoice must never auto-expire, so this webhook path no longer voids the draft under any tag combination';
+  return 'PASS: fresh order state determines whether the webhook may void';
 });
 
-await check('Friday reset is disabled and never touches an order or its draft', async () => {
+await check('Friday reset preserves references when invoice deletion fails', async () => {
   const state = waitAdmin({ deleteFailure: true });
   const admin = { graphql: async (query, options) => {
     if (query.includes('FridayUnpaidThursdayOrders')) {
-      throw new Error('runFridayReset must not query orders while disabled');
+      const node = fixture(1, 1, { tags: ['thursday-email-sent'] });
+      node.metafield = { id: 'meta-1', value: oldDraft };
+      return { json: async () => ({ data: { orders: { edges: [{ node }] } } }) };
+    }
+    return state.admin.graphql(query, options);
+  } };
+  const result = await world().load('app/lib/friday-reset.server.ts').runFridayReset(admin, { shop, dryRun: false });
+  assert.equal(result.ok, false);
+  assert.equal(state.orders.get(orderId).draftId, oldDraft);
+  assert.ok(state.orders.get(orderId).tags.includes('thursday-email-sent'));
+  return 'PASS: Friday deletion failure does not orphan the invoice';
+});
+
+await check('A brand-new unpaid invoice is protected from this same Friday reset run', async () => {
+  const state = waitAdmin();
+  const admin = { graphql: async (query, options) => {
+    if (query.includes('FridayUnpaidThursdayOrders')) {
+      const node = fixture(1, 1, { tags: ['thursday-email-sent'] });
+      node.metafield = { id: 'meta-1', value: oldDraft };
+      return { json: async () => ({ data: { orders: { edges: [{ node }] } } }) };
+    }
+    if (query.includes('FridayResetDraftAge')) {
+      return { json: async () => ({ data: { draftOrder: { createdAt: new Date().toISOString() } } }) };
     }
     return state.admin.graphql(query, options);
   } };
   const result = await world().load('app/lib/friday-reset.server.ts').runFridayReset(admin, { shop, dryRun: false });
   assert.equal(result.ok, true);
-  assert.equal(result.draftsDeleted, 0);
   assert.equal(result.ordersProcessed, 0);
+  assert.equal(result.draftsDeleted, 0);
   assert.equal(state.orders.get(orderId).draftId, oldDraft);
   assert.ok(state.orders.get(orderId).tags.includes('thursday-email-sent'));
-  return 'PASS: Friday reset is a no-op — an unpaid invoice stays fully linked and open indefinitely';
+  return 'PASS: an invoice created moments ago is skipped this run, so a Pay Now link never dies within hours of being sent';
+});
+
+await check('A week-old unpaid invoice still resets normally on Friday', async () => {
+  const state = waitAdmin();
+  const admin = { graphql: async (query, options) => {
+    if (query.includes('FridayUnpaidThursdayOrders')) {
+      const node = fixture(1, 1, { tags: ['thursday-email-sent'] });
+      node.metafield = { id: 'meta-1', value: oldDraft };
+      return { json: async () => ({ data: { orders: { edges: [{ node }] } } }) };
+    }
+    if (query.includes('FridayResetDraftAge')) {
+      return { json: async () => ({ data: { draftOrder: { createdAt: '2020-01-01T00:00:00Z' } } }) };
+    }
+    return state.admin.graphql(query, options);
+  } };
+  const result = await world().load('app/lib/friday-reset.server.ts').runFridayReset(admin, { shop, dryRun: false });
+  assert.equal(result.ok, true);
+  assert.equal(result.ordersProcessed, 1);
+  assert.equal(result.draftsDeleted, 1);
+  assert.equal(state.orders.get(orderId).draftId, null);
+  assert.ok(!state.orders.get(orderId).tags.includes('thursday-email-sent'));
+  assert.ok(state.orders.get(orderId).tags.includes('pushed-to-next-weekend'));
+  return 'PASS: an invoice old enough to be genuinely stale still resets and reopens the order for a fresh cycle';
 });
 
 const readyTags = ['piece-made-notified', 'leaving-for-canada-notified', 'arrived-in-canada-notified'];
